@@ -7,9 +7,15 @@ run:
 connectors:
   gmail:
     enabled: true
-    # Applied incrementally each run. Keep it BROAD — includes Promotions (where vendor
-    # sales land) and all categories; the classifier + vendor allowlist sort it out.
-    # Excludes only your own sent mail, chats, and drafts.
+    # Multiple inboxes — each authorized separately (setup wizard), each with its own
+    # OAuth token in Keychain and its own incremental cursor. Leave empty for a single
+    # account (legacy). authuser deep-links open the correct inbox.
+    accounts:
+      - "derekpruski@gmail.com"
+      - "derek@skinbyrender.com"
+      - "derek@peptideprice.store"
+    # Applied incrementally each run per account. Keep it BROAD — includes Promotions
+    # (where vendor sales land); the classifier + vendor allowlist sort it out.
     query: "newer_than:2d -in:sent -in:chats -in:drafts"
     max_results: 150
   calendar:

@@ -39,26 +39,38 @@ def setup_anthropic() -> None:
 
 
 def setup_google() -> None:
-    print("\n[2/4] Google (Gmail + Calendar, read-only)")
-    if get_secret("google_oauth_token_json"):
-        print("  ✓ Google already authorized.")
-        return
-    print("  Paste the contents of your OAuth *desktop client* credentials.json.")
-    print("  (Google Cloud Console → APIs & Services → Credentials → OAuth client → Desktop)")
-    raw = input("  credentials.json contents: ").strip()
-    if not raw:
-        print("  skipped.")
-        return
+    from app.settings import get_settings
+    accounts = (get_settings().connector("gmail").get("accounts") or [None])
+    print(f"\n[2/4] Google — {len(accounts)} account(s), Gmail + Calendar (read-only)")
+
+    client = get_secret("google_oauth_client_json")
+    if not client:
+        print("  Paste the contents of your OAuth *desktop client* credentials.json.")
+        print("  (Google Cloud Console → APIs & Services → Credentials → OAuth client → Desktop)")
+        client = input("  credentials.json contents: ").strip()
+        if not client:
+            print("  skipped.")
+            return
+        set_secret("google_oauth_client_json", client)
+
     try:
         from google_auth_oauthlib.flow import InstalledAppFlow
     except ImportError:
         print("  google-auth-oauthlib not installed; run pip install -r requirements.txt")
         return
-    flow = InstalledAppFlow.from_client_config(json.loads(raw), GOOGLE_SCOPES)
-    creds = flow.run_local_server(port=0)  # opens your browser for consent
-    set_secret("google_oauth_client_json", raw)
-    set_secret("google_oauth_token_json", creds.to_json())
-    print("  ✓ Google authorized and token stored in Keychain.")
+
+    for account in accounts:
+        key = "google_oauth_token_json" if not account else f"google_oauth_token_json:{account}"
+        if get_secret(key):
+            print(f"  ✓ {account or 'default'} already authorized.")
+            continue
+        label = account or "your Google account"
+        print(f"\n  → Authorizing {label}. A browser will open — SIGN IN AS {label}.")
+        input("     Press Enter when ready…")
+        flow = InstalledAppFlow.from_client_config(json.loads(client), GOOGLE_SCOPES)
+        creds = flow.run_local_server(port=0)
+        set_secret(key, creds.to_json())
+        print(f"  ✓ {label} authorized and stored in Keychain.")
 
 
 def setup_telegram() -> None:

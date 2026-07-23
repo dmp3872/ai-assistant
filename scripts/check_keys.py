@@ -16,14 +16,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # allow `python
 from app.security import get_secret
 from app.settings import ROOT
 
-CHECKS = [
-    ("anthropic_api_key", "Claude API (drafting)", "console.anthropic.com -> API Keys"),
-    ("google_oauth_token_json", "Gmail + Calendar", "setup_wizard.py -> Google OAuth"),
-    ("telegram_api_id", "Telegram api_id", "my.telegram.org"),
-    ("telegram_api_hash", "Telegram api_hash", "my.telegram.org"),
-    ("telegram_session", "Telegram login", "setup_wizard.py -> Telegram"),
-    ("skool_auth_token", "Skool session", "cookie-editor -> auth_token"),
-]
+def _checks():
+    from app.settings import get_settings
+    checks = [("anthropic_api_key", "Claude API (drafting)", "console.anthropic.com -> API Keys")]
+    accounts = get_settings().connector("gmail").get("accounts") or [None]
+    for a in accounts:
+        key = "google_oauth_token_json" if not a else f"google_oauth_token_json:{a}"
+        checks.append((key, f"Gmail: {a or 'default'}", "setup_wizard.py -> Google OAuth"))
+    checks += [
+        ("telegram_api_id", "Telegram api_id", "my.telegram.org"),
+        ("telegram_api_hash", "Telegram api_hash", "my.telegram.org"),
+        ("telegram_session", "Telegram login", "setup_wizard.py -> Telegram"),
+        ("skool_auth_token", "Skool session", "cookie-editor -> auth_token"),
+        ("tiktok_cookie", "TikTok (optional)", "cookie-editor -> if public fetch blocked"),
+    ]
+    return checks
 
 
 def _mask(v: str) -> str:
@@ -50,7 +57,7 @@ def _skool_token_info(tok: str) -> str:
 def main() -> None:
     print("Radar credential check\n" + "=" * 40)
     missing = []
-    for account, label, where in CHECKS:
+    for account, label, where in _checks():
         val = get_secret(account)
         if val:
             extra = f" · {_skool_token_info(val)}" if account == "skool_auth_token" else ""

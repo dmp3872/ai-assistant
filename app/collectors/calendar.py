@@ -16,20 +16,31 @@ from app.settings import get_settings
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
 
+def _calendar_token_key() -> str:
+    """Calendar reuses a Gmail account's Google token (same OAuth client, both scopes).
+    Uses config `calendar.account` if set, else the first configured Gmail account."""
+    cfg = get_settings()
+    account = cfg.connector("calendar").get("account")
+    if not account:
+        accounts = cfg.connector("gmail").get("accounts") or [None]
+        account = accounts[0]
+    return "google_oauth_token_json" if not account else f"google_oauth_token_json:{account}"
+
+
 def _build_service():
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request
     from googleapiclient.discovery import build
 
-    token_json = get_secret("google_oauth_token_json", required=True)
-    # Reuse the same Google token as Gmail; it must include both scopes.
+    key = _calendar_token_key()
+    token_json = get_secret(key, required=True)
     creds = Credentials.from_authorized_user_info(
         json.loads(token_json),
         ["https://www.googleapis.com/auth/gmail.readonly", *SCOPES],
     )
     if not creds.valid and creds.refresh_token:
         creds.refresh(Request())
-        set_secret("google_oauth_token_json", creds.to_json())
+        set_secret(key, creds.to_json())
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
 
@@ -88,8 +99,13 @@ class CalendarCollector(BaseCollector):
         created = ev.get("updated")
         when = self._parse(created)
         title = ev.get("summary") or "(no title)"
+        # pending invite = your own attendee entry is still awaiting a response
+        me = next((a for a in ev.get("attendees", []) if a.get("self")), None)
+        pending = bool(me and me.get("responseStatus") == "needsAction")
         if status == "cancelled":
             title = f"[CANCELLED] {title}"
+        elif pending:
+            title = f"[INVITE — accept in Google Calendar] {title}"
         body_lines = [
             f"Start: {start}",
             f"Status: {status}",
@@ -108,7 +124,7 @@ class CalendarCollector(BaseCollector):
             created_at=when,
             title=title,
             body="\n".join(body_lines),
-            raw={"status": status, "start": start},
+            raw={"status": status, "start": start, "pending": pending},
         )
 
     @staticmethod

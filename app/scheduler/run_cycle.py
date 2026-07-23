@@ -57,6 +57,11 @@ def _enrich(item: NormalizedItem) -> NormalizedItem:
                 and item.raw.get("authored_by_me")):
             item.category = "content"
             item.needs_response = False
+        # Pending calendar invites need a decision — "Open" takes you to Google
+        # Calendar to accept/decline (keeps the app read-only).
+        if item.source == "calendar" and item.raw.get("pending"):
+            item.needs_response = True
+            item.priority = "today"
     return item
 
 
