@@ -35,9 +35,15 @@ connectors:
     author_name: "Derek Pruski"      # your Skool display name, matched case-insensitively
     author_handles: ["derek"]        # optional @handles that are also you
     # --- historical/classroom import tuning ---
-    historical_feed_scrolls: 40      # how many gentle scrolls to load feed history
+    historical_feed_scrolls: 40      # (Playwright fallback) scrolls to load feed history
     max_courses: 100                 # safety caps for the classroom crawl
     max_lessons_per_course: 200
+    # --- deep feed pagination (token path) ---
+    max_feed_pages: 20               # how many feed pages to walk on a deep import
+    # Skool has no public API; the data-endpoint shape varies per community. The
+    # default template usually works — confirm yours once with
+    # `python scripts/skool_pull.py --inspect` and override here if needed.
+    feed_page_template: ""           # e.g. "{origin}/_next/data/{buildId}/{slug}.json?group={slug}&p={page}"
 
 # Phase 2/3 — off until built
   imessage:  { enabled: false }

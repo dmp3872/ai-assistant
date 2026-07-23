@@ -25,8 +25,7 @@ from app.models import NormalizedItem
 from app.security import sanitize, set_secret
 
 
-def _unanswered(collector, url):
-    recs = sp.parse_feed(collector._fetch_html(url), url)
+def _unanswered(collector, recs):
     posts = [r for r in recs if r["kind"] == "post"]
     comments = [r for r in recs if r["kind"] == "comment"]
     answered = {c["parent_id"] for c in comments if collector._is_me(c["author"], None)}
@@ -41,6 +40,9 @@ def main() -> None:
     ap.add_argument("--group", help="community slug (else your first group)")
     ap.add_argument("--classroom", action="store_true", help="import classroom -> retrieval")
     ap.add_argument("--draft", action="store_true", help="generate a comment per unanswered post")
+    ap.add_argument("--inspect", action="store_true",
+                    help="print pagination diagnostics (buildId, cursor keys) and exit")
+    ap.add_argument("--pages", type=int, default=None, help="max feed pages for deep pull")
     ap.add_argument("--limit", type=int, default=10)
     args = ap.parse_args()
 
@@ -73,6 +75,20 @@ def main() -> None:
     url = collector._resolve_community_url()
     print(f"\nReading feed: {url}")
 
+    if args.inspect:
+        from app.collectors import skool_api
+        info = skool_api.inspect_feed(url, collector.token)
+        print("\nPagination diagnostics (use to confirm/override skool.feed_page_template):")
+        for k, v in info.items():
+            print(f"   {k}: {v}")
+        print("\nIf candidate_page2_url returns JSON with more posts in your browser,")
+        print("the default template works. If not, copy the real request from the")
+        print("Network tab into config skool.feed_page_template.")
+        return
+
+    if args.pages is not None:
+        collector.max_feed_pages = args.pages
+
     if args.classroom:
         from app.security import sanitize as _san
         from app.retrieval import ingest_skool
@@ -82,8 +98,11 @@ def main() -> None:
         counts = ingest_skool(lessons)
         print(f"Classroom imported -> {counts}")
 
-    unanswered = _unanswered(collector, url)[: args.limit]
-    print(f"\nPosts you haven't replied to: {len(unanswered)}\n" + "-" * 48)
+    recs = collector.deep_feed()  # all pages (token path)
+    n_posts = len([r for r in recs if r["kind"] == "post"])
+    unanswered = _unanswered(collector, recs)[: args.limit]
+    print(f"\nScanned {n_posts} posts across all pages · "
+          f"you haven't replied to {len(unanswered)}\n" + "-" * 48)
     for p in unanswered:
         print(f"\n▸ {p['title']}\n  by {p['author']} · {p['url']}")
         print(f"  {(p['body'] or '')[:200]}")

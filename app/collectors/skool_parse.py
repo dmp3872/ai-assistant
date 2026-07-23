@@ -171,39 +171,72 @@ def lesson_url(course_url: str, lesson_id: str | None) -> str:
 
 
 # ------------------------------------------------------------------ public parsers
+def feed_records_from_data(data: Any, community_url: str) -> list[dict]:
+    """Build post+comment records from an already-parsed data object (a __NEXT_DATA__
+    blob OR a _next/data JSON page). Used by both HTML and JSON pagination paths."""
+    out: list[dict] = []
+    for post in _iter_posts(data):
+        pid = str(post.get("id"))
+        purl = post_url(community_url, post)
+        out.append({"kind": "post", "id": pid, "title": _title_of(post) or "Skool post",
+                    "author": _author_of(post), "body": _content_of(post) or "",
+                    "url": purl, "created_at": _time_of(post), "parent_id": None})
+        for c in _comments_of(post):
+            out.append({"kind": "comment", "id": f"{pid}:c:{c.get('id')}", "title": None,
+                        "author": _author_of(c), "body": _content_of(c) or "",
+                        "url": purl, "created_at": _time_of(c), "parent_id": pid})
+    return out
+
+
 def parse_feed(html: str, community_url: str) -> list[dict]:
     """Return a flat list of {kind, id, title, author, body, url, created_at} for
     posts AND their comments. Prefers __NEXT_DATA__, falls back to DOM."""
     data = extract_next_data(html)
     if data:
-        out: list[dict] = []
-        for post in _iter_posts(data):
-            pid = str(post.get("id"))
-            purl = post_url(community_url, post)
-            out.append({
-                "kind": "post",
-                "id": pid,
-                "title": _title_of(post) or "Skool post",
-                "author": _author_of(post),
-                "body": _content_of(post) or "",
-                "url": purl,
-                "created_at": _time_of(post),
-                "parent_id": None,
-            })
-            for c in _comments_of(post):
-                out.append({
-                    "kind": "comment",
-                    "id": f"{pid}:c:{c.get('id')}",
-                    "title": None,
-                    "author": _author_of(c),
-                    "body": _content_of(c) or "",
-                    "url": purl,
-                    "created_at": _time_of(c),
-                    "parent_id": pid,
-                })
+        out = feed_records_from_data(data, community_url)
         if out:
             return out
     return _parse_feed_dom(html, community_url)
+
+
+def extract_build_id(html: str) -> str | None:
+    """The Next.js buildId, needed to construct _next/data pagination URLs."""
+    data = extract_next_data(html)
+    return data.get("buildId") if isinstance(data, dict) else None
+
+
+# keys that carry a "load more" cursor/flag in Skool's SSR data (verify per community)
+_CURSOR_KEYS = ["nextCursor", "endCursor", "next_cursor", "cursor", "nextPage",
+                "next_page", "after", "offset"]
+_HASNEXT_KEYS = ["hasNextPage", "has_next_page", "hasMore", "has_more"]
+
+
+def extract_page_cursor(html_or_data) -> dict:
+    """Best-effort discovery of pagination hints anywhere in the feed data. Returns
+    {cursor, has_next, keys_seen} — keys_seen helps you confirm the real param names
+    against your community via `skool_pull.py --inspect`."""
+    data = extract_next_data(html_or_data) if isinstance(html_or_data, str) else html_or_data
+    found = {"cursor": None, "has_next": None, "keys_seen": []}
+    if not isinstance(data, (dict, list)):
+        return found
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k in _CURSOR_KEYS and isinstance(v, (str, int)) and v != "":
+                    found["cursor"] = found["cursor"] or v
+                    found["keys_seen"].append(k)
+                if k in _HASNEXT_KEYS and isinstance(v, bool):
+                    found["has_next"] = v if found["has_next"] is None else found["has_next"]
+                    found["keys_seen"].append(k)
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    walk(data)
+    found["keys_seen"] = sorted(set(found["keys_seen"]))
+    return found
 
 
 def _parse_feed_dom(html: str, community_url: str) -> list[dict]:

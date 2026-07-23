@@ -42,6 +42,8 @@ class SkoolCollector(BaseCollector):
         self.feed_scrolls = int(self.cfg.get("historical_feed_scrolls", 40))
         self.max_courses = int(self.cfg.get("max_courses", 100))
         self.max_lessons_per_course = int(self.cfg.get("max_lessons_per_course", 200))
+        self.max_feed_pages = int(self.cfg.get("max_feed_pages", 20))
+        self.feed_template = self.cfg.get("feed_page_template") or None
         # who "you" are, for voice-namespace routing
         self.author_name = (self.cfg.get("author_name") or "").strip().lower()
         self.author_handles = {h.strip().lower().lstrip("@")
@@ -113,13 +115,28 @@ class SkoolCollector(BaseCollector):
     def historical_import(self) -> list[NormalizedItem]:
         collected: list[NormalizedItem] = []
         url = self._resolve_community_url()
-        # Feed: SSR returns the first page; deep history paginates via Skool's API
-        # (a focused follow-up). Incremental collection keeps it current after this.
-        for rec in sp.parse_feed(self._fetch_html(url), url):
+        # Deep feed history: paginate through Skool's data endpoint (token path);
+        # Playwright fallback gets the first SSR page only.
+        if self.use_token:
+            recs = skool_api.paginate_feed(url, self.token, template=self.feed_template,
+                                           max_pages=self.max_feed_pages,
+                                           pace_s=self.pace_ms / 1000.0)
+        else:
+            recs = sp.parse_feed(self._fetch_html(url), url)
+        for rec in recs:
             dt, _ = self._to_dt(rec.get("created_at"))
             collected.append(self._normalize(rec, dt))
         collected.extend(self._import_classroom())
         return collected
+
+    def deep_feed(self) -> list[dict]:
+        """All feed records across pages (token path). Used by scripts/skool_pull."""
+        url = self._resolve_community_url()
+        if self.use_token:
+            return skool_api.paginate_feed(url, self.token, template=self.feed_template,
+                                           max_pages=self.max_feed_pages,
+                                           pace_s=self.pace_ms / 1000.0)
+        return sp.parse_feed(self._fetch_html(url), url)
 
     def import_classroom(self) -> list[NormalizedItem]:
         """Public entry to (re)import just the classroom, without the feed."""

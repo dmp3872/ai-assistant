@@ -49,6 +49,43 @@ def test_unanswered_detection(monkeypatch):
     assert len(unanswered) == 1 and unanswered[0]["id"] == "p1"
 
 
+def _post(pid, name="P"):
+    return {"id": pid, "name": name, "metadata": {"content": "c", "slug": pid},
+            "user": {"metadata": {"name": "Someone"}}, "createdAt": "2026-07-20T00:00:00Z",
+            "comments": []}
+
+
+def test_extract_build_id_and_cursor():
+    html = _nd({"buildId": "abc123", "props": {"pageProps": {
+        "posts": [_post("p1")], "hasNextPage": True, "nextCursor": "cur2"}}})
+    assert sp.extract_build_id(html) == "abc123"
+    hint = sp.extract_page_cursor(html)
+    assert hint["cursor"] == "cur2" and hint["has_next"] is True
+    assert "nextCursor" in hint["keys_seen"]
+
+
+def test_paginate_feed_walks_pages_and_dedups(monkeypatch):
+    page1 = _nd({"buildId": "b1", "props": {"pageProps": {
+        "posts": [_post("p1"), _post("p2")], "hasNextPage": True, "nextCursor": "c2"}}})
+    page2 = {"pageProps": {"posts": [_post("p2"), _post("p3")],  # p2 dup
+                           "hasNextPage": True, "nextCursor": "c3"}}
+    page3 = {"pageProps": {"posts": [_post("p4")], "hasNextPage": False}}
+    monkeypatch.setattr(skool_api, "get_html", lambda url, token=None: page1)
+    seq = iter([page2, page3, {"pageProps": {"posts": []}}])
+    monkeypatch.setattr(skool_api, "get_json", lambda url, token=None: next(seq))
+
+    recs = skool_api.paginate_feed("https://www.skool.com/research-radar", "X", max_pages=10)
+    ids = sorted({r["id"] for r in recs if r["kind"] == "post"})
+    assert ids == ["p1", "p2", "p3", "p4"]  # deduped p2, stopped at has_next False
+
+
+def test_paginate_feed_first_page_only_without_buildid(monkeypatch):
+    monkeypatch.setattr(skool_api, "get_html",
+                        lambda url, token=None: _nd({"props": {"pageProps": {"posts": [_post("p1")]}}}))
+    recs = skool_api.paginate_feed("https://www.skool.com/research-radar", "X")
+    assert len([r for r in recs if r["kind"] == "post"]) == 1  # no buildId -> graceful
+
+
 def test_fetch_new_via_token(monkeypatch):
     monkeypatch.setattr(skool_api, "get_html", lambda url, token=None: FEED)
     c = SkoolCollector(); c.token = "X"; c.use_token = True
