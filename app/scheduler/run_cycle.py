@@ -18,7 +18,7 @@ from app.db.models import Draft, Item, Sale
 from app.drafting import draft_response, extract_sale
 from app.drafting.sales_extractor import find_contradiction
 from app.models import NormalizedItem
-from app.retrieval import ingest_items
+from app.retrieval import ingest_skool
 from app.scheduler.lock import FileLock, LockHeld
 from app.scheduler.notify import notify
 from app.security import audit, sanitize
@@ -83,9 +83,9 @@ def _handle_item(item: NormalizedItem) -> bool:
                                 confidence=d["confidence"], review_reason=d["review_reason"],
                                 sources_used=d["sources_used"], model=d["model"]))
 
-        # Seed retrieval from your own Skool content
+        # Seed retrieval from your own Skool content (routes by authorship/kind)
         if item.source == "skool":
-            ingest_items([item])
+            ingest_skool([item])
         return True
     except Exception as exc:
         audit("error", source=item.source, stage="handle", error=str(exc))

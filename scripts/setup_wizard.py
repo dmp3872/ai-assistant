@@ -82,20 +82,26 @@ def setup_telegram() -> None:
 
 
 def setup_skool() -> None:
-    print("\n[4/4] Skool historical import (optional, one-time)")
-    ans = input("  Run the one-time import of your Skool posts now? [y/N]: ").strip().lower()
+    print("\n[4/4] Skool import — feed history + classroom (optional, one-time)")
+    print("  Tip: set skool.author_name in config so your posts/comments route into")
+    print("  your voice namespaces. Run `python scripts/import_skool.py --debug` first")
+    print("  to eyeball that authorship + fields parsed correctly.")
+    ans = input("  Run the full Skool import now? [y/N]: ").strip().lower()
     if ans != "y":
-        print("  skipped — you can run it later.")
+        print("  skipped — run `python scripts/import_skool.py` anytime.")
         return
     try:
         from app.collectors.skool import SkoolCollector
-        from app.retrieval import ingest_items
+        from app.retrieval import ingest_skool
+        from app.security import sanitize
 
         items = SkoolCollector().historical_import()
-        n = ingest_items(items, namespace="skool_posts")
-        print(f"  ✓ imported {n} Skool items into the retrieval store.")
+        for it in items:
+            it.body_clean, _ = sanitize(it.body or "")
+        counts = ingest_skool(items)
+        print(f"  ✓ imported {len(items)} items -> chunks {counts}")
     except Exception as exc:
-        print(f"  ! Skool import failed (verify selectors/profile): {exc}")
+        print(f"  ! Skool import failed (verify config/profile): {exc}")
 
 
 def main() -> None:

@@ -32,15 +32,39 @@ string is stored in Keychain.
 There is **no stable official Skool API.** Third-party APIs have existed and been
 suspended; endpoint availability is inconsistent. So we drive your **already-logged-in
 browser** with Playwright:
-- One **initial historical import** of your posts, comments, and course text.
+- One **initial historical import** of your posts, comments, **and full classroom**
+  (every course → every lesson → lesson text).
 - **Incremental** collection every cycle (new posts/comments/mentions since cursor).
 - A slower **overnight reconciliation** scan to catch anything missed.
 - We do **not** crawl the whole community every 45 minutes.
 
 You said the Skool admins are fine with reading your own community via your account as
 long as we don't stress their systems. The collector honors that: gentle pacing,
-incremental only, no writes. Selectors *will* break when Skool ships UI changes — the
-health check catches this and the dashboard flags it. Treat Skool as maintenance-heavy.
+incremental only, no writes.
+
+**Parsing strategy (why this is more robust than raw selectors).** Skool is a Next.js
+app, so the collector prefers the `__NEXT_DATA__` JSON blob embedded in each page over
+brittle CSS. The browser only navigates/scrolls/clicks; all extraction lives in the
+pure, offline-tested module `app/collectors/skool_parse.py` and matches on field
+*shapes* (an id + content + author) rather than fixed paths, with a CSS/DOM fallback.
+When Skool changes upstream you usually adjust a couple of alias lists (`*_KEYS`) and
+URL templates in one file — the fixtures in `tests/test_skool_parse.py` tell you when
+they need updating.
+
+**Voice retrieval.** Imported content is routed by authorship (config
+`skool.author_name` / `author_handles`): your posts → `skool_posts`, your comments →
+`skool_comments`, all lessons → `courses`. Other members' posts are not your writing
+and are skipped for voice. Long text is chunked (`app/retrieval/chunk.py`) before
+embedding so retrieved snippets carry their lesson/post context. Run and verify with:
+
+```bash
+python scripts/import_skool.py --debug          # see what parsed + who's tagged as you
+python scripts/import_skool.py                  # feed history + classroom, then ingest
+python scripts/import_skool.py --classroom-only # re-pull just courses/lessons
+```
+
+Verify two things once against your community (both centralized, one-line tweaks): the
+`__NEXT_DATA__` field aliases and the post/lesson URL templates in `skool_parse.py`.
 
 ### Apple Messages (Phase 2)
 iMessage history is in a local SQLite DB (`~/Library/Messages/chat.db`). We open it

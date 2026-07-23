@@ -1,40 +1,31 @@
 """Skool collector — Playwright over your authenticated browser session.
 
-There is no stable official Skool API, so we drive a logged-in browser. This connector
-is the most fragile in the system: Skool UI changes WILL break the selectors below.
-They are centralized in SELECTORS and flagged by health_check so the dashboard can warn
-you. Behavior contract:
+There is no stable official Skool API, so we drive a logged-in browser. Read-only.
+This module handles ONLY navigation/scrolling/clicking and hands raw page HTML to the
+pure parsers in skool_parse.py (which prefer Skool's __NEXT_DATA__ JSON over brittle
+CSS). That split keeps the fragile DOM knowledge in one testable place.
 
+Behavior contract:
   * READ-ONLY. Navigates and scrapes; never posts, comments, or reacts.
-  * INCREMENTAL by default (new posts/comments since the stored cursor timestamp).
-  * GENTLE pacing (config `pace_ms_between_requests`) — the admins are fine with
-    reading your own community as long as we don't stress their systems.
-  * A separate historical_import() method does the one-time big pull of your posts,
-    comments, and course text (run by the setup wizard, not every cycle).
-
-Selectors are intentionally isolated. Verify them once against your community with
-`python scripts/run_once.py --only skool` and adjust SELECTORS as needed.
+  * INCREMENTAL feed collection every cycle (new posts/comments since the cursor).
+  * A one-time historical_import(): your full feed history + comments, PLUS the
+    classroom (every course -> every lesson -> lesson text) for voice retrieval.
+  * GENTLE pacing (config `pace_ms_between_requests`).
+  * Authorship tagging: items you wrote are flagged authored_by_me so ingestion can
+    route them into your voice namespaces (skool_posts / skool_comments); lessons go
+    to the `courses` namespace.
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 
+from app.collectors import skool_parse as sp
 from app.collectors.base import BaseCollector
 from app.models import NormalizedItem
 from app.settings import get_settings
 
-# --- ALL Skool DOM coupling lives here. Update in ONE place when Skool changes. ---
-SELECTORS = {
-    "feed_post": "[data-testid='post'], div.post-card",
-    "post_link": "a[href*='/']",
-    "post_author": "[data-testid='post-author'], .post-author",
-    "post_time": "time, [datetime]",
-    "post_body": "[data-testid='post-content'], .post-content",
-    "comment": "[data-testid='comment'], .comment",
-    "comment_author": ".comment-author",
-    "comment_body": ".comment-content",
-}
+# Re-exported so scripts/health checks can reference the DOM fallback selectors.
+SELECTORS = sp.SELECTORS
 
 
 class SkoolCollector(BaseCollector):
@@ -42,17 +33,22 @@ class SkoolCollector(BaseCollector):
 
     def __init__(self) -> None:
         self.cfg = get_settings().connector("skool")
-        self.community_url = self.cfg["community_url"]
+        self.community_url = self.cfg["community_url"].rstrip("/")
+        self.classroom_url = self.cfg.get("classroom_url") or f"{self.community_url}/classroom"
         self.pace_ms = int(self.cfg.get("pace_ms_between_requests", 1500))
         self.profile = self.cfg.get("chrome_profile_path")
+        self.feed_scrolls = int(self.cfg.get("historical_feed_scrolls", 40))
+        self.max_courses = int(self.cfg.get("max_courses", 100))
+        self.max_lessons_per_course = int(self.cfg.get("max_lessons_per_course", 200))
+        # who "you" are, for voice-namespace routing
+        self.author_name = (self.cfg.get("author_name") or "").strip().lower()
+        self.author_handles = {h.strip().lower().lstrip("@")
+                               for h in (self.cfg.get("author_handles") or []) if h}
 
     # --- browser session -------------------------------------------------
     def _launch(self):
-        """Open a persistent context on your logged-in Chrome profile.
-
-        Uses a COPY of your profile dir (set in config) so we never fight the live
-        browser for the profile lock. Returns (playwright, context, page).
-        """
+        """Open a persistent context on your logged-in Chrome profile (a copy of it,
+        set in config, so we never fight the live browser for the profile lock)."""
         from playwright.sync_api import sync_playwright
 
         pw = sync_playwright().start()
@@ -64,19 +60,22 @@ class SkoolCollector(BaseCollector):
         page = context.new_page()
         return pw, context, page
 
+    def _goto(self, page, url: str):
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        self._pace(self.pace_ms)
+
     def health_check(self) -> bool:
         try:
             pw, context, page = self._launch()
             try:
-                page.goto(self.community_url, wait_until="domcontentloaded", timeout=20000)
-                ok = page.query_selector(SELECTORS["feed_post"]) is not None
-                return ok
+                self._goto(page, self.community_url)
+                return bool(sp.parse_feed(page.content(), self.community_url))
             finally:
                 context.close(); pw.stop()
         except Exception:
             return False
 
-    # --- incremental collection -----------------------------------------
+    # --- incremental feed collection (every cycle) -----------------------
     def fetch_new(self, cursor: str | None):
         since = float(cursor) if cursor else 0.0
         newest = since
@@ -84,96 +83,122 @@ class SkoolCollector(BaseCollector):
 
         pw, context, page = self._launch()
         try:
-            page.goto(self.community_url, wait_until="domcontentloaded", timeout=30000)
-            self._pace(self.pace_ms)
-            posts = page.query_selector_all(SELECTORS["feed_post"])
-            for post in posts:
-                data = self._read_post(post)
-                if data is None:
+            self._goto(page, self.community_url)
+            for rec in sp.parse_feed(page.content(), self.community_url):
+                dt, ts = self._to_dt(rec.get("created_at"))
+                if ts and ts <= since:
                     continue
-                ts = data["created_ts"]
-                if ts <= since:
-                    continue  # already have it
                 newest = max(newest, ts)
-                items.append(self._normalize_post(data))
-                self._pace(self.pace_ms)
+                items.append(self._normalize(rec, dt))
         finally:
             context.close(); pw.stop()
-
         return items, str(newest)
 
-    def _read_post(self, post) -> dict | None:
-        try:
-            link_el = post.query_selector(SELECTORS["post_link"])
-            body_el = post.query_selector(SELECTORS["post_body"])
-            author_el = post.query_selector(SELECTORS["post_author"])
-            time_el = post.query_selector(SELECTORS["post_time"])
-            href = link_el.get_attribute("href") if link_el else None
-            url = self._abs(href)
-            dt_attr = time_el.get_attribute("datetime") if time_el else None
-            ts = self._parse_ts(dt_attr)
-            return {
-                "url": url,
-                "id": href or url,
-                "author": author_el.inner_text().strip() if author_el else None,
-                "body": body_el.inner_text().strip() if body_el else "",
-                "created_ts": ts,
-                "created_at": datetime.fromtimestamp(ts, tz=timezone.utc) if ts else None,
-            }
-        except Exception:
-            return None
-
-    def _normalize_post(self, d: dict) -> NormalizedItem:
-        return NormalizedItem(
-            source=self.name,
-            source_id=str(d["id"]),
-            author=d.get("author"),
-            url=d.get("url"),
-            created_at=d.get("created_at"),
-            title="Skool post",
-            body=d.get("body", ""),
-            raw={"kind": "post"},
-        )
-
-    # --- one-time historical import (called by setup wizard) -------------
+    # --- one-time historical import (feed + comments + classroom) ---------
     def historical_import(self) -> list[NormalizedItem]:
-        """Deep pull of YOUR posts + comments + course text for the retrieval store.
-
-        Run once. Paces gently. Returns NormalizedItems; the wizard hands them to
-        retrieval.ingest so drafts can quote your real writing. Course/classroom
-        pages are scraped read-only for text only.
-        """
         collected: list[NormalizedItem] = []
         pw, context, page = self._launch()
         try:
-            page.goto(self.community_url, wait_until="domcontentloaded", timeout=30000)
-            # Scroll the feed to load history, gently.
-            for _ in range(30):
-                page.mouse.wheel(0, 4000)
+            # 1) Feed history: scroll to load older posts, then parse everything once.
+            self._goto(page, self.community_url)
+            for _ in range(self.feed_scrolls):
+                page.mouse.wheel(0, 5000)
                 self._pace(self.pace_ms)
-            for post in page.query_selector_all(SELECTORS["feed_post"]):
-                d = self._read_post(post)
-                if d:
-                    collected.append(self._normalize_post(d))
-            # Course text: navigate to /classroom and collect lesson bodies.
-            # (Left as a focused follow-up; the feed import already seeds voice well.)
+            for rec in sp.parse_feed(page.content(), self.community_url):
+                dt, _ = self._to_dt(rec.get("created_at"))
+                collected.append(self._normalize(rec, dt))
+
+            # 2) Classroom: every course -> every lesson -> lesson text.
+            collected.extend(self._import_classroom(page))
         finally:
             context.close(); pw.stop()
         return collected
 
+    def import_classroom(self) -> list[NormalizedItem]:
+        """Public entry to (re)import just the classroom, without the feed."""
+        pw, context, page = self._launch()
+        try:
+            return self._import_classroom(page)
+        finally:
+            context.close(); pw.stop()
+
+    def _import_classroom(self, page) -> list[NormalizedItem]:
+        lessons_out: list[NormalizedItem] = []
+        self._goto(page, self.classroom_url)
+        courses = sp.parse_classroom_index(page.content(), self.community_url)
+        for course in courses[: self.max_courses]:
+            try:
+                self._goto(page, course["url"])
+            except Exception:
+                continue
+            lessons = sp.parse_course(page.content(), course["url"])
+            for lesson in lessons[: self.max_lessons_per_course]:
+                try:
+                    self._goto(page, lesson["url"])
+                    parsed = sp.parse_lesson(page.content(), lesson.get("id"))
+                except Exception:
+                    continue
+                body = parsed.get("body") or ""
+                if not body.strip():
+                    continue
+                lessons_out.append(self._normalize_lesson(course, lesson, parsed))
+        return lessons_out
+
+    # --- normalization ---------------------------------------------------
+    def _normalize(self, rec: dict, dt: datetime | None) -> NormalizedItem:
+        kind = rec.get("kind", "post")
+        return NormalizedItem(
+            source=self.name,
+            source_id=str(rec["id"]),
+            thread_id=rec.get("parent_id"),
+            author=rec.get("author"),
+            url=rec.get("url"),
+            created_at=dt,
+            title=rec.get("title") or ("Skool comment" if kind == "comment" else "Skool post"),
+            body=rec.get("body", ""),
+            raw={"kind": kind, "authored_by_me": self._is_me(rec.get("author"),
+                                                             rec.get("author_handle"))},
+        )
+
+    def _normalize_lesson(self, course: dict, lesson: dict, parsed: dict) -> NormalizedItem:
+        return NormalizedItem(
+            source=self.name,
+            source_id=f"lesson:{course['id']}:{lesson['id']}",
+            author=self.cfg.get("author_name"),
+            url=lesson["url"],
+            title=f"{course.get('title', 'Course')} — {parsed.get('title', 'Lesson')}",
+            body=parsed.get("body", ""),
+            # lessons are your course material: always voice/knowledge, always ingested
+            raw={"kind": "lesson", "authored_by_me": True,
+                 "course": course.get("title"), "course_id": course["id"]},
+        )
+
     # --- helpers ---------------------------------------------------------
-    def _abs(self, href: str | None) -> str | None:
-        if not href:
-            return None
-        if href.startswith("http"):
-            return href
-        return "https://www.skool.com" + href
+    def _is_me(self, author: str | None, handle: str | None) -> bool:
+        if author and self.author_name and author.strip().lower() == self.author_name:
+            return True
+        if handle and handle.strip().lower().lstrip("@") in self.author_handles:
+            return True
+        return False
 
     @staticmethod
-    def _parse_ts(dt_attr: str | None) -> float:
-        if not dt_attr:
-            return 0.0
+    def _to_dt(value) -> tuple[datetime | None, float]:
+        """Accept ISO-8601 strings or epoch (sec/ms). Return (datetime, unix_ts)."""
+        if value is None or value == "":
+            return None, 0.0
+        # numeric epoch
         try:
-            return datetime.fromisoformat(dt_attr.replace("Z", "+00:00")).timestamp()
+            num = float(value)
+            if num > 1e12:  # milliseconds
+                num /= 1000.0
+            dt = datetime.fromtimestamp(num, tz=timezone.utc)
+            return dt, dt.timestamp()
+        except (ValueError, TypeError):
+            pass
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt, dt.timestamp()
         except ValueError:
-            return 0.0
+            return None, 0.0
