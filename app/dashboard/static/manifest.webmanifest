@@ -1,0 +1,14 @@
+{
+  "name": "Radar — your feed",
+  "short_name": "Radar",
+  "description": "Your local personal-assistant feed: sales, community, content, email — read-only, drafts only.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#08080d",
+  "theme_color": "#8b5cf6",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

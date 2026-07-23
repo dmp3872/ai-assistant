@@ -6,9 +6,12 @@ from app.settings import get_settings
 CATEGORIES = [
     "peptideprice_sales",
     "community",
+    "content",
     "vendor",
     "financial_legal",
     "personal",
+    "email_work",       # business correspondence (vendors, affiliate, invoices)
+    "email_personal",   # personal correspondence
     "calendar",
     "newsletter_spam",
     "no_action",

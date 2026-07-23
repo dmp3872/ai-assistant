@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from app.classifiers import classify, is_duplicate, tab_for_category
+from app.classifiers import classify, classify_gmail, is_duplicate, tab_for_category
 from app.collectors import get_enabled_collectors
 from app.db import get_session, init_db
 from app.db.models import Draft, Item, Sale
@@ -32,11 +32,20 @@ def _enrich(item: NormalizedItem) -> NormalizedItem:
     item.body_clean = clean
     item.injection_flag = injection
     item.body_hash = item.compute_hash()
-    result = classify(item)
-    item.category = result["category"]
-    item.priority = result["priority"]
-    item.needs_response = result["needs_response"]
-    item.spam = result["spam"]
+
+    if item.source == "gmail":
+        # Deterministic routing: vendor allowlist + new-sale rules + work/personal split.
+        result = classify_gmail(item)
+        item.category = result["category"]
+        item.needs_response = result["needs_response"]
+        item.spam = result["spam"]
+        item.priority = "today" if result["category"] == "peptideprice_sales" else "fyi"
+    else:
+        result = classify(item)
+        item.category = result["category"]
+        item.priority = result["priority"]
+        item.needs_response = result["needs_response"]
+        item.spam = result["spam"]
     return item
 
 

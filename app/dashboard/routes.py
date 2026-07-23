@@ -51,6 +51,44 @@ def _active_filter(q):
     )
 
 
+@router.get("/summary")
+def summary():
+    """Per-tab counts + scan stats + connectors for the sidebar and rail."""
+    counts = {"priority": 0, "community": 0, "sales": 0, "content": 0,
+              "personal": 0, "email": 0}
+    scanned = relevant = filtered = flagged = 0
+    with get_session() as s:
+        for item in _active_filter(s.query(Item)).all():
+            tab = tab_for_category(item.category)
+            if item.priority == "urgent" or item.needs_response or item.injection_flag:
+                counts["priority"] += 1
+            if tab in counts:
+                counts[tab] += 1
+            scanned += 1
+            if item.injection_flag:
+                flagged += 1
+            if item.spam:
+                filtered += 1
+            else:
+                relevant += 1
+        connectors = [
+            {"name": c.name, "status": c.status,
+             "last_success": c.last_success_at.isoformat() if c.last_success_at else None}
+            for c in s.query(Connector).all()
+        ]
+        # sales ending soon (has an end_date)
+        sales_soon = [
+            {"vendor": r.vendor, "promo": r.promo_name, "end": r.end_date}
+            for r in s.query(Sale).filter(Sale.end_date != None)  # noqa: E711
+            .order_by(desc(Sale.id)).limit(6).all()
+        ]
+    return {"counts": counts,
+            "scan": {"scanned": scanned, "relevant": relevant,
+                     "filtered": filtered, "flagged": flagged},
+            "connectors": connectors, "sales_soon": sales_soon,
+            "emergency_stopped": _settings.emergency_stopped}
+
+
 @router.get("/status")
 def status():
     with get_session() as s:
@@ -89,7 +127,7 @@ def sales():
     with get_session() as s:
         rows = s.query(Sale).order_by(desc(Sale.id)).limit(200).all()
         return {"sales": [
-            {"id": r.id, "vendor": r.vendor, "promo_name": r.promo_name,
+            {"id": r.id, "item_id": r.item_id, "vendor": r.vendor, "promo_name": r.promo_name,
              "discount": r.discount, "coupon_code": r.coupon_code,
              "start_date": r.start_date, "end_date": r.end_date, "end_tz": r.end_tz,
              "exclusions": r.exclusions, "free_shipping_threshold": r.free_shipping_threshold,

@@ -2,63 +2,70 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Radar Assistant</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Radar — your feed</title>
   <link rel="stylesheet" href="/styles.css" />
+  <!-- PWA: installs to the home screen; hit the URL and "Add to Home Screen" -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#8b5cf6" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Radar" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
 </head>
 <body>
-  <header>
-    <div class="brand">📡 Radar Assistant <span class="sub">local · read-only</span></div>
-    <div class="controls">
-      <button id="run-btn">Run now</button>
-      <button id="stop-btn" class="danger">Emergency stop</button>
+<div id="banner" class="banner"></div>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">📡</span><span><span class="word">Radar</span><small>your feed</small></span></div>
+    <nav class="nav" id="nav">
+      <button class="nav-item" aria-selected="true" data-tab="priority"><span class="ico">▦</span> Feed <span class="cnt" data-c="priority">0</span></button>
+      <button class="nav-item" data-tab="community"><span class="ico">◎</span> Community <span class="cnt" data-c="community">0</span></button>
+      <button class="nav-item" data-tab="sales"><span class="ico">◈</span> Sales <span class="cnt" data-c="sales">0</span></button>
+      <button class="nav-item" data-tab="content"><span class="ico">✦</span> Content <span class="cnt" data-c="content">0</span></button>
+      <button class="nav-item" data-tab="personal"><span class="ico">◐</span> Personal <span class="cnt" data-c="personal">0</span></button>
+      <button class="nav-item" data-tab="email"><span class="ico">✉</span> Email <span class="cnt" data-c="email">0</span></button>
+    </nav>
+    <div class="side-spacer"></div>
+    <button class="run-btn" id="run">↻ Run now</button>
+    <div class="health" id="health"></div>
+    <button class="stop" id="stop">⛔ Emergency stop</button>
+  </aside>
+
+  <main class="main">
+    <div class="mobilebar">
+      <div class="brand" style="font-size:18px;padding:0"><span class="logo" style="width:28px;height:28px;font-size:14px">📡</span> <span class="word">Radar</span></div>
+      <div style="display:flex;gap:8px"><button class="icon-btn" id="run-m">↻</button><button class="icon-btn" id="theme-m">◐</button></div>
     </div>
-  </header>
+    <div class="feed-head">
+      <div class="feed-title"><h1 id="ftitle">Feed</h1><span class="sub" id="fsub">everything that needs you</span>
+        <button class="icon-btn" id="theme" style="margin-left:auto">◐</button></div>
+      <div class="statusline"><span class="live"></span> <span id="status-text">Loading…</span></div>
+    </div>
+    <div class="subfilter" id="subfilter">
+      <button class="seg" aria-selected="true" data-sub="all">All</button>
+      <button class="seg" data-sub="email_work">Work</button>
+      <button class="seg" data-sub="email_personal">Personal</button>
+    </div>
+    <div class="feed" id="feed"><div class="empty">Loading…</div></div>
+  </main>
 
-  <div id="banner" class="banner hidden"></div>
+  <aside class="rail">
+    <div><h3>Latest scan</h3><div class="stat-grid" id="stats"></div></div>
+    <div><h3>Sales ending soon</h3><div class="panel" id="sales-rail"></div></div>
+    <div><h3>Next 24 hours</h3><div class="panel" id="cal-rail"></div></div>
+    <div><h3>Connectors</h3><div class="panel" id="conn-rail"></div></div>
+  </aside>
+</div>
 
-  <nav id="tabs">
-    <button data-tab="priority" class="active">Priority Inbox</button>
-    <button data-tab="sales">PeptidePrice Sales</button>
-    <button data-tab="community">Community</button>
-    <button data-tab="content">Content Opportunities</button>
-    <button data-tab="personal">Personal / Admin</button>
-    <button data-tab="review">Review History</button>
-  </nav>
-
-  <main id="content"><div class="loading">Loading…</div></main>
-
-  <footer id="connector-health"></footer>
-
-  <template id="item-card">
-    <article class="card">
-      <div class="card-head">
-        <span class="badge source"></span>
-        <span class="badge priority"></span>
-        <span class="badge injection hidden">⚠ possible injection</span>
-        <span class="person"></span>
-        <a class="open" target="_blank" rel="noopener">Open original ↗</a>
-      </div>
-      <h3 class="title"></h3>
-      <p class="summary"></p>
-      <div class="draft-wrap hidden">
-        <div class="draft-meta"></div>
-        <textarea class="draft"></textarea>
-        <div class="actions">
-          <button class="copy">Copy response</button>
-          <button class="save-review">Save what I posted</button>
-          <button class="reject">Reject draft</button>
-          <button class="handled">Mark handled</button>
-          <button class="snooze">Snooze 24h</button>
-        </div>
-      </div>
-      <div class="actions no-draft hidden">
-        <button class="handled">Mark handled</button>
-        <button class="snooze">Snooze 24h</button>
-      </div>
-    </article>
-  </template>
-
-  <script src="/app.js"></script>
+<nav class="bottomnav" id="bnav">
+  <button class="bn" aria-selected="true" data-tab="priority"><span class="bi">▦</span>Feed</button>
+  <button class="bn" data-tab="community"><span class="bi">◎</span>Community</button>
+  <button class="bn" data-tab="sales"><span class="bi">◈</span>Sales</button>
+  <button class="bn" data-tab="email"><span class="bi">✉</span>Email</button>
+  <button class="bn" data-tab="personal"><span class="bi">◐</span>You</button>
+</nav>
+<div class="toast" id="toast"></div>
+<script src="/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,96 @@
+# The ONLY companies Radar surfaces sales for — your price-tool vendors.
+# A Gmail promo is only shown in the Sales feed if its sender/name matches one of
+# these AND it looks like a NEW sale going live (not a cart nudge, commission notice,
+# order/shipping confirmation, review request, or digest).
+#
+# Add `domains:` as you learn each vendor's sending domain — domain matching is the
+# most reliable. `aliases:` are extra name spellings matched in sender/subject text.
+# Edit this file freely; app/classifiers/vendors.py loads it live.
+
+vendors:
+  - name: AlgoRX
+  - name: Amazon
+    domains: ["amazon.com"]
+  - name: AMC Essentials
+    aliases: ["AMC"]
+  - name: AMP Peptides
+    aliases: ["AMP"]
+  - name: Ascension Peptides
+    aliases: ["Ascension"]
+  - name: Atomik Labz
+    aliases: ["Atomik"]
+  - name: Biocase Innovations
+    aliases: ["Biocase"]
+  - name: BioEdge Peptides
+    aliases: ["BioEdge"]
+  - name: Biomed Labs
+  - name: Disguised Alpha
+    domains: ["disguisedalpha.com"]
+  - name: Double R Labs
+    aliases: ["Double R"]
+  - name: EZ Peptides
+    domains: ["ezpeptides.com"]
+  - name: FelixChem
+    aliases: ["Felix Chem", "Felix Chemical Supply", "Felix"]
+    domains: ["felixchemllc@gmail.com", "felix-mail.com", "felixchem.is", "felixchem.com"]
+  - name: FITSKNS
+  - name: Flawless Compounds
+    aliases: ["Flawless"]
+  - name: Glacier Aminos
+    aliases: ["Glacier"]
+  - name: Glow Aminos
+    aliases: ["Glow"]
+  - name: Good Labs
+  - name: Instant Peptides
+    domains: ["instantpeptides.com"]
+  - name: Ion Peptide
+  - name: Kimera Chems
+    domains: ["kimerachems.co"]
+    aliases: ["Kimera"]
+  - name: Lab Sourced
+  - name: LA Peptides
+  - name: MDPackUSA
+  - name: Mile High Compounds
+    aliases: ["Mile High"]
+  - name: Modern Research Peptides
+    domains: ["modernresearchpeptides.net"]
+  - name: Modified Aminos
+  - name: Molecular Solutions
+  - name: Nano Blue Labs
+    aliases: ["Nano Blue"]
+  - name: Next Gen Peptides
+    aliases: ["Next Gen"]
+  - name: Nova Peptides
+    domains: ["novapeptidesupply.com"]
+  - name: Nuove
+  - name: Omegamino
+    domains: ["omegamino.net"]
+  - name: Oneday Compounds
+    aliases: ["Oneday"]
+  - name: Peptidology
+    hidden: true
+  - name: PeptiPen
+  - name: Peptira
+    domains: ["peptira.com"]
+  - name: Peppy
+  - name: Performeds
+  - name: Puratek
+  - name: Purus Peptides
+    aliases: ["Purus"]
+  - name: RefillPen
+  - name: Renova Peptides
+    domains: ["renovapeptides.net"]
+  - name: RetaOneLabs
+    aliases: ["Reta One", "RetaOne"]
+  - name: Solyn
+  - name: Solution Peptides
+  - name: Southern Aminos
+    domains: ["southernaminos.com"]
+  - name: Step One Ventures
+    aliases: ["Step One"]
+  - name: Throne
+  - name: Trusted Aminos
+  - name: Valor Peptides
+    domains: ["valorpeptides.com"]
+  - name: Welli Labs
+    aliases: ["Welli"]

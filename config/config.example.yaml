@@ -47,11 +47,14 @@ classification:
   tabs:
     peptideprice_sales: sales
     community: community
+    content: content
     vendor: community
     financial_legal: personal
     personal: personal
+    email_work: email          # Email tab, Work sub-filter
+    email_personal: email      # Email tab, Personal sub-filter
     calendar: priority
-    newsletter_spam: hidden
+    newsletter_spam: hidden    # filtered like a spam folder
     no_action: hidden
 
 drafting:
