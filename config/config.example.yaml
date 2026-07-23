@@ -1,0 +1,71 @@
+# Copy to config/config.yaml and edit. Non-secret settings only.
+
+run:
+  interval_seconds: 2700          # 45 minutes (also set in the launchd plist)
+  lookback_hours_on_first_run: 48 # "newer_than:2d" style bootstrap window
+
+connectors:
+  gmail:
+    enabled: true
+    # Gmail search applied incrementally each run. Keep it broad; classifier sorts it.
+    query: "newer_than:2d -category:promotions in:anywhere"
+    max_results: 100
+  calendar:
+    enabled: true
+    calendar_ids: ["primary"]
+    horizon_hours: 168            # look one week ahead for new/changed/cancelled events
+  telegram:
+    enabled: true
+    # ONLY these chats are ingested. Do not blindly ingest every large group.
+    watch_chats: []               # e.g. ["@somebot", 123456789, "Vendor DM"]
+    include_mentions_everywhere: true
+  skool:
+    enabled: true
+    community_url: "https://www.skool.com/your-community"
+    # Playwright drives your logged-in Chrome profile (copied, not the live one).
+    chrome_profile_path: "~/Library/Application Support/Google/Chrome/Default"
+    incremental_only: true
+    pace_ms_between_requests: 1500   # be gentle; admins are OK as long as we don't hammer
+    historical_import_done: false    # setup wizard flips this after first big import
+
+# Phase 2/3 — off until built
+  imessage:  { enabled: false }
+  whatsapp:  { enabled: false }
+  tiktok:    { enabled: false }
+
+classification:
+  spam_threshold: 0.7
+  # Map raw categories -> dashboard tabs
+  tabs:
+    peptideprice_sales: sales
+    community: community
+    vendor: community
+    financial_legal: personal
+    personal: personal
+    calendar: priority
+    newsletter_spam: hidden
+    no_action: hidden
+
+drafting:
+  enabled: true
+  # Only draft for items the classifier marks needs_response=true
+  draft_categories: ["community", "vendor"]
+  max_context_snippets: 6
+  max_snippet_chars: 800
+
+retrieval:
+  db_path: "./data/lancedb"
+  # namespaces that may inform a PUBLIC (community) draft — personal/financial excluded
+  public_namespaces:
+    ["skool_posts", "skool_comments", "courses", "tiktok_transcripts",
+     "approved_email_responses", "vendor_policies", "disclaimers", "peptideprice_ops"]
+
+security:
+  redact_patterns: default        # SSN, EIN, card, account #, password-like
+  network_allowlist:
+    ["googleapis.com", "api.telegram.org", "skool.com", "tiktok.com",
+     "api.anthropic.com", "127.0.0.1"]
+
+notifications:
+  macos: true
+  telegram_bot: false             # optional second channel

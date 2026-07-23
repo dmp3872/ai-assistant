@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Radar Assistant — 45-minute collection job.
+
+  Install:
+    1. Edit the paths below (REPLACE __REPO__ with your clone path, e.g.
+       /Users/derek/radar-assistant, and confirm the venv python path).
+    2. cp scheduler/com.radar.assistant.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.radar.assistant.plist
+    4. launchctl start com.radar.assistant   (optional: run immediately)
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.radar.assistant.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.radar.assistant</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__REPO__/.venv/bin/python</string>
+    <string>-m</string>
+    <string>app.scheduler.run_cycle</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+
+  <!-- 45 minutes -->
+  <key>StartInterval</key>
+  <integer>2700</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__REPO__/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO__/logs/launchd.err.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
