@@ -52,6 +52,11 @@ def _enrich(item: NormalizedItem) -> NormalizedItem:
             item.needs_response = True
             item.spam = False
             item.priority = "today"
+        # Your OWN Skool posts go to the Content tab (today's posts), not Community.
+        if (item.source == "skool" and item.raw.get("kind") == "post"
+                and item.raw.get("authored_by_me")):
+            item.category = "content"
+            item.needs_response = False
     return item
 
 

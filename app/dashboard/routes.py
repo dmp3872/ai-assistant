@@ -51,19 +51,68 @@ def _active_filter(q):
     )
 
 
+TAB_ORDER = ["priority", "community", "sales", "content", "tiktok", "personal", "email"]
+
+
+def _tab_of(item: Item) -> str:
+    """Which single tab an item belongs to (source-aware). 'hidden' = filtered."""
+    if item.source == "tiktok":
+        return "tiktok"
+    if item.category == "peptideprice_sales":
+        return "sales"
+    if item.category == "content":
+        return "content"
+    if item.source == "skool" and item.category == "community":
+        return "community"
+    if item.category in ("email_work", "email_personal"):
+        return "email"
+    if item.category in ("personal", "financial_legal"):
+        return "personal"
+    return "hidden"
+
+
+def _is_priority(item: Item) -> bool:
+    return bool((item.priority == "urgent" or item.needs_response or item.injection_flag)
+                and not item.spam)
+
+
+def _in_tab(item: Item, tab: str) -> bool:
+    return _is_priority(item) if tab == "priority" else _tab_of(item) == tab
+
+
+def _relevance(item: Item) -> int:
+    score = 0
+    if item.injection_flag or item.priority == "urgent":
+        score += 3
+    if item.needs_response:
+        score += 2
+    if item.priority == "today":
+        score += 1
+    return score
+
+
+def _sort_items(rows: list[Item], sort: str) -> list[Item]:
+    floor = datetime.min
+    if sort == "oldest":
+        return sorted(rows, key=lambda i: i.created_at or floor)
+    if sort == "relevant":
+        return sorted(rows, key=lambda i: (_relevance(i), i.created_at or floor), reverse=True)
+    return sorted(rows, key=lambda i: i.created_at or floor, reverse=True)  # newest
+
+
 @router.get("/summary")
 def summary():
     """Per-tab counts + scan stats + connectors for the sidebar and rail."""
-    counts = {"priority": 0, "community": 0, "sales": 0, "content": 0,
-              "personal": 0, "email": 0}
+    counts = {t: 0 for t in TAB_ORDER}
+    counts["handled"] = 0
     scanned = relevant = filtered = flagged = 0
     with get_session() as s:
         for item in _active_filter(s.query(Item)).all():
-            tab = tab_for_category(item.category)
-            if item.priority == "urgent" or item.needs_response or item.injection_flag:
+            if _is_priority(item):
                 counts["priority"] += 1
-            if tab in counts:
-                counts[tab] += 1
+            t = _tab_of(item)
+            if t in counts:
+                counts[t] += 1
             scanned += 1
             if item.injection_flag:
                 flagged += 1
@@ -71,6 +120,7 @@ def summary():
                 filtered += 1
             else:
                 relevant += 1
+        counts["handled"] = s.query(Item).filter(Item.handled == True).count()  # noqa: E712
         connectors = [
             {"name": c.name, "status": c.status,
              "last_success": c.last_success_at.isoformat() if c.last_success_at else None}
@@ -103,24 +153,19 @@ def status():
 
 
 @router.get("/items")
-def items(tab: str = "priority"):
-    """Return items for a dashboard tab."""
+def items(tab: str = "priority", sort: str = "newest"):
+    """Return items for a dashboard tab, sorted newest|oldest|relevant."""
     out = []
     with get_session() as s:
-        q = _active_filter(s.query(Item)).order_by(desc(Item.created_at))
-        for item in q.limit(200):
-            item_tab = tab_for_category(item.category)
-            if tab == "priority":
-                if item.priority == "urgent" or item.needs_response or item.injection_flag:
-                    pass
-                else:
-                    continue
-            elif item_tab != tab:
-                continue
+        if tab == "handled":
+            rows = s.query(Item).filter(Item.handled == True).all()  # noqa: E712
+        else:
+            rows = [it for it in _active_filter(s.query(Item)).all() if _in_tab(it, tab)]
+        for item in _sort_items(rows, sort)[:200]:
             draft = (s.query(Draft).filter_by(item_id=item.id)
                      .order_by(desc(Draft.id)).first())
             out.append(_item_dict(item, draft))
-    return {"tab": tab, "items": out}
+    return {"tab": tab, "sort": sort, "items": out}
 
 
 @router.get("/sales")
@@ -177,6 +222,14 @@ def save_review(item_id: int, payload: dict = Body(...)):
     if final_text and not rejected:
         ingest_review_examples([{"text": final_text, "url": url or "", "ref_id": str(item_id)}])
     return {"ok": True}
+
+
+@router.get("/content/recommendation")
+def content_recommendation():
+    """A new-post idea grounded in your classroom content (on-demand; uses the API)."""
+    from app.drafting.claude_drafter import recommend_post
+    rec = recommend_post()
+    return {"recommendation": rec}
 
 
 @router.post("/run")

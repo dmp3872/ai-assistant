@@ -64,6 +64,34 @@ def draft_response(item: NormalizedItem) -> dict | None:
         return None
 
 
+def recommend_post() -> dict | None:
+    """Suggest a new Skool/TikTok post idea grounded in your classroom content.
+    Pulls a sample of your course material and asks Claude for one post in your voice.
+    Returns {title, angle, outline:[...]} or None (no API key / no content yet)."""
+    try:
+        snippets = get_store().search("courses", "most useful teaching topics for my audience", k=6)
+    except Exception:
+        snippets = []
+    if not snippets:
+        return None
+    ctx = "\n".join(f"- {s.get('text', '')[:300]}" for s in snippets)
+    system = (
+        "You suggest ONE new community post idea for Derek (PeptidePrice / a peptide "
+        "research community), grounded ONLY in his classroom material below. Match his "
+        "voice: short, direct, research-use framing, no medical advice. Return JSON: "
+        '{"title": str, "angle": str, "outline": [str, str, str]}.')
+    user = f"--- DEREK'S CLASSROOM MATERIAL ---\n{ctx}\n\nSuggest one post as JSON."
+    try:
+        resp = _client().messages.create(model=_settings.claude_model, max_tokens=500,
+                                          system=system, messages=[{"role": "user", "content": user}])
+        data = _parse_json(resp.content[0].text)
+        audit("draft", kind="content_recommendation", title=data.get("title"))
+        return data
+    except Exception as exc:
+        audit("error", stage="recommend_post", error=str(exc))
+        return None
+
+
 def _parse_json(text: str) -> dict:
     text = text.strip()
     if text.startswith("```"):

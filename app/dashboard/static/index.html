@@ -22,9 +22,11 @@
       <button class="nav-item" aria-selected="true" data-tab="priority"><span class="ico">▦</span> Feed <span class="cnt" data-c="priority">0</span></button>
       <button class="nav-item" data-tab="community"><span class="ico">◎</span> Community <span class="cnt" data-c="community">0</span></button>
       <button class="nav-item" data-tab="sales"><span class="ico">◈</span> Sales <span class="cnt" data-c="sales">0</span></button>
+      <button class="nav-item" data-tab="tiktok"><span class="ico">♪</span> TikTok <span class="cnt" data-c="tiktok">0</span></button>
       <button class="nav-item" data-tab="content"><span class="ico">✦</span> Content <span class="cnt" data-c="content">0</span></button>
       <button class="nav-item" data-tab="personal"><span class="ico">◐</span> Personal <span class="cnt" data-c="personal">0</span></button>
       <button class="nav-item" data-tab="email"><span class="ico">✉</span> Email <span class="cnt" data-c="email">0</span></button>
+      <button class="nav-item" data-tab="handled"><span class="ico">✓</span> Handled <span class="cnt" data-c="handled">0</span></button>
     </nav>
     <div class="side-spacer"></div>
     <button class="run-btn" id="run">↻ Run now</button>
@@ -41,6 +43,12 @@
       <div class="feed-title"><h1 id="ftitle">Feed</h1><span class="sub" id="fsub">everything that needs you</span>
         <button class="icon-btn" id="theme" style="margin-left:auto">◐</button></div>
       <div class="statusline"><span class="live"></span> <span id="status-text">Loading…</span></div>
+      <div class="sortbar" id="sortbar">
+        <span class="sortlbl">Sort</span>
+        <button class="seg sm" aria-selected="true" data-sort="newest">Newest</button>
+        <button class="seg sm" data-sort="oldest">Oldest</button>
+        <button class="seg sm" data-sort="relevant">Relevant</button>
+      </div>
     </div>
     <div class="subfilter" id="subfilter">
       <button class="seg" aria-selected="true" data-sub="all">All</button>

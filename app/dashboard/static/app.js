@@ -7,8 +7,8 @@ function fmtDate(iso){if(!iso)return"";const d=new Date(iso);if(isNaN(d))return"
   const abs=d.toLocaleDateString(undefined,{month:"short",day:"numeric"});
   const rel=days<=0?"today":days===1?"1d ago":days+"d ago";
   return `${abs} · ${rel}`;}
-const LABEL={priority:"Feed",community:"Community",sales:"Sales",content:"Content",personal:"Personal",email:"Email"};
-let tab="priority", sub="all";
+const LABEL={priority:"Feed",community:"Community",sales:"Sales",tiktok:"TikTok",content:"Content",personal:"Personal",email:"Email",handled:"Handled"};
+let tab="priority", sub="all", sortMode="newest";
 
 function avatarClass(cat){
   if(cat==="peptideprice_sales")return"sales";
@@ -21,8 +21,8 @@ function pill(p){const x=(p||"fyi").toLowerCase();const c=x==="urgent"?"urgent":
   return `<span class="pill ${c}">${x==="urgent"?"Review":x}</span>`;}
 
 function itemCard(it){
-  const av=avatarClass(it.category);
-  const glyph=av==="sales"?"🏷️":av==="email"?"✉️":av==="content"?"📢":av==="personal"?"👤":"🎓";
+  const av=it.source==="tiktok"?"tiktok":avatarClass(it.category);
+  const glyph=av==="tiktok"?"♪":av==="sales"?"🏷️":av==="email"?"✉️":av==="content"?"📢":av==="personal"?"👤":"🎓";
   const inj=it.injection_flag?`<div class="flag">🛡 <span><b>Prompt-injection flagged.</b> Treated as data, never executed — surfaced so you can act.</span></div>`:"";
   const draft=it.draft?`<div class="draft"><div class="draft-head"><span class="draft-label">Your draft reply</span><span class="conf ${it.confidence||'low'}">${it.confidence||'low'}</span></div><div class="draft-text" contenteditable="true" spellcheck="false">${esc(it.draft)}</div>${it.review_reason?`<div style="padding:0 13px 10px;font-size:11px;color:var(--faint)">${esc(it.review_reason)}</div>`:""}</div>`:"";
   const open=it.url?`<a class="act" href="${esc(it.url)}" target="_blank">↗ Open</a>`:"";
@@ -59,19 +59,36 @@ function salesCard(s){
 async function render(){
   const feed=$("#feed");feed.innerHTML='<div class="empty">Loading…</div>';
   $("#subfilter").classList.toggle("on",tab==="email");
+  const q="&sort="+sortMode;
   if(tab==="sales"){
-    const [{items:sitems},{sales}]=await Promise.all([api("/items?tab=sales"),api("/sales")]);
+    const [{items:sitems},{sales}]=await Promise.all([api("/items?tab=sales"+q),api("/sales")]);
     const byItem={};(sales||[]).forEach(s=>{if(s.item_id)byItem[s.item_id]=s;});
     const list=(sitems||[]);
     feed.innerHTML=list.length
       ? list.map(it=>byItem[it.id]?salesCard(byItem[it.id]):itemCard(it)).join("")
-      : '<div class="empty">No new vendor sales yet. Live sales from your 52 price-tool companies will land here — commission notices, cart nudges and non-vendor promos are filtered out.</div>';
+      : '<div class="empty">No new vendor sales yet. Live sales from your 52 price-tool companies land here — commission notices, cart nudges and non-vendor promos are filtered out.</div>';
     return;
   }
-  const {items}=await api("/items?tab="+tab);
+  const {items}=await api("/items?tab="+tab+q);
   let list=items||[];
   if(tab==="email"&&sub!=="all")list=list.filter(i=>i.category===sub);
-  feed.innerHTML=list.length?list.map(itemCard).join(""):`<div class="empty">Nothing in ${LABEL[tab]} right now.</div>`;
+  let head="";
+  if(tab==="content")head='<div class="rec" id="rec"><h4>✨ Recommend a post from my classroom</h4>'
+    +'<div style="font-size:13px;color:var(--muted)">Grounded only in your course content, in your voice.</div>'
+    +'<div class="actions"><button class="act primary" id="rec-btn">Generate idea</button></div></div>';
+  const empty=tab==="handled"?"Nothing handled yet.":`Nothing in ${LABEL[tab]} right now.`;
+  feed.innerHTML=head+(list.length?list.map(itemCard).join(""):`<div class="empty">${empty}</div>`);
+  const rb=$("#rec-btn");if(rb)rb.onclick=loadRecommendation;
+}
+
+async function loadRecommendation(){
+  const rec=$("#rec");if(!rec)return;rec.innerHTML='<h4>✨ Thinking…</h4>';
+  const {recommendation:r}=await api("/content/recommendation");
+  if(!r){rec.innerHTML='<h4>✨ Recommend a post</h4><div style="font-size:13px;color:var(--muted)">Import your classroom (skool_pull.py --classroom) and set your API key first.</div>';return;}
+  rec.innerHTML=`<h4>${esc(r.title||"Post idea")}</h4><div style="font-size:13px;color:var(--muted)">${esc(r.angle||"")}</div>`
+    +`<ul>${(r.outline||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`
+    +`<div class="actions"><button class="act primary" data-copy>⧉ Copy</button><button class="act" id="rec-btn">↻ Another</button></div>`;
+  const rb=$("#rec-btn");if(rb)rb.onclick=loadRecommendation;
 }
 
 async function refreshChrome(){
@@ -101,7 +118,9 @@ function selectTab(t){tab=t;sub="all";
 $("#nav").addEventListener("click",e=>{const b=e.target.closest(".nav-item");if(b)selectTab(b.dataset.tab);});
 $("#bnav").addEventListener("click",e=>{const b=e.target.closest(".bn");if(b)selectTab(b.dataset.tab);});
 $("#subfilter").addEventListener("click",e=>{const b=e.target.closest(".seg");if(!b)return;
-  sub=b.dataset.sub;$$(".seg").forEach(x=>x.setAttribute("aria-selected",x===b));render();});
+  sub=b.dataset.sub;$$("#subfilter .seg").forEach(x=>x.setAttribute("aria-selected",x===b));render();});
+$("#sortbar").addEventListener("click",e=>{const b=e.target.closest(".seg");if(!b)return;
+  sortMode=b.dataset.sort;$$("#sortbar .seg").forEach(x=>x.setAttribute("aria-selected",x===b));render();});
 
 $("#feed").addEventListener("click",async e=>{
   const card=e.target.closest(".card");if(!card)return;const id=card.dataset.id;
