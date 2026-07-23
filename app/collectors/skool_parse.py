@@ -228,6 +228,39 @@ def _parse_feed_dom(html: str, community_url: str) -> list[dict]:
     return [o for o in out if o["id"]]
 
 
+def parse_groups(html: str) -> list[dict]:
+    """From an authenticated Skool page (SSR __NEXT_DATA__), return the user's
+    communities as [{name, slug, url}]. Group-like: has id + name + slug and a
+    group/community hint."""
+    data = extract_next_data(html)
+    out: list[dict] = []
+    seen: set[str] = set()
+    if not data:
+        return out
+    hint = re.compile(r"group|community", re.I)
+
+    def walk(o: Any) -> None:
+        if isinstance(o, dict):
+            slug = _first_str(o, SLUG_KEYS)
+            name = _title_of(o)
+            typ = str(o.get("type", "")) + " " + str(o.get("__typename", ""))
+            looks = (o.get("id") and slug and name and
+                     (hint.search(typ) or "members" in o or "memberCount" in o or
+                      "membersCount" in o))
+            if looks and slug not in seen:
+                seen.add(slug)
+                out.append({"name": name, "slug": slug,
+                            "url": f"https://www.skool.com/{slug}"})
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    walk(data)
+    return out
+
+
 def parse_classroom_index(html: str, community_url: str) -> list[dict]:
     """Return [{id, title, url}] for each course in the classroom."""
     data = extract_next_data(html)

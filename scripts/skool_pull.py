@@ -1,0 +1,108 @@
+"""Pull your real Skool data with your session token, find posts you haven't replied
+to, import classroom content, and draft a comment for each — in your voice.
+
+RUN THIS ON YOUR MAC. A cloud sandbox can't reach skool.com (network policy blocks it);
+your Mac has no such block.
+
+  # first time: store your Skool auth_token (from cookie-editor -> auth_token) in Keychain
+  python scripts/skool_pull.py --token "<auth_token>" --save
+
+  # thereafter (token read from Keychain):
+  python scripts/skool_pull.py                      # list your communities + unanswered posts
+  python scripts/skool_pull.py --group peptideprice # pick a community by slug
+  python scripts/skool_pull.py --classroom          # also import all classroom lessons -> retrieval
+  python scripts/skool_pull.py --draft              # generate a copy-ready comment per unanswered post
+
+The token is a credential — it is stored in the macOS Keychain, never in the repo.
+"""
+from __future__ import annotations
+
+import argparse
+
+from app.collectors import skool_parse as sp
+from app.collectors.skool import SkoolCollector
+from app.models import NormalizedItem
+from app.security import sanitize, set_secret
+
+
+def _unanswered(collector, url):
+    recs = sp.parse_feed(collector._fetch_html(url), url)
+    posts = [r for r in recs if r["kind"] == "post"]
+    comments = [r for r in recs if r["kind"] == "comment"]
+    answered = {c["parent_id"] for c in comments if collector._is_me(c["author"], None)}
+    return [p for p in posts
+            if not collector._is_me(p["author"], None) and p["id"] not in answered]
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--token", help="Skool auth_token (else read from Keychain)")
+    ap.add_argument("--save", action="store_true", help="store --token in the Keychain")
+    ap.add_argument("--group", help="community slug (else your first group)")
+    ap.add_argument("--classroom", action="store_true", help="import classroom -> retrieval")
+    ap.add_argument("--draft", action="store_true", help="generate a comment per unanswered post")
+    ap.add_argument("--limit", type=int, default=10)
+    args = ap.parse_args()
+
+    if args.token and args.save:
+        set_secret("skool_auth_token", args.token)
+        print("✓ stored skool_auth_token in Keychain")
+
+    collector = SkoolCollector()
+    if args.token:
+        collector.token = args.token
+        collector.use_token = True
+    if not collector.use_token:
+        print("No Skool token. Pass --token '<auth_token>' (from cookie-editor).")
+        return
+
+    if not collector.health_check():
+        print("Token did not authenticate. Re-export a fresh auth_token from Skool.")
+        return
+
+    groups = collector.discover_groups()
+    print(f"\nCommunities on this token: {len(groups)}")
+    for g in groups:
+        print(f"   • {g['name']}  ({g['slug']})")
+
+    if args.group:
+        match = next((g for g in groups if g["slug"] == args.group), None)
+        if match:
+            collector.community_url = match["url"]
+            collector.classroom_url = f"{match['url']}/classroom"
+    url = collector._resolve_community_url()
+    print(f"\nReading feed: {url}")
+
+    if args.classroom:
+        from app.security import sanitize as _san
+        from app.retrieval import ingest_skool
+        lessons = collector.import_classroom()
+        for it in lessons:
+            it.body_clean, _ = _san(it.body or "")
+        counts = ingest_skool(lessons)
+        print(f"Classroom imported -> {counts}")
+
+    unanswered = _unanswered(collector, url)[: args.limit]
+    print(f"\nPosts you haven't replied to: {len(unanswered)}\n" + "-" * 48)
+    for p in unanswered:
+        print(f"\n▸ {p['title']}\n  by {p['author']} · {p['url']}")
+        print(f"  {(p['body'] or '')[:200]}")
+        if args.draft:
+            item = NormalizedItem(source="skool", source_id=p["id"], author=p["author"],
+                                  url=p["url"], title=p["title"], body=p["body"] or "",
+                                  category="community", needs_response=True)
+            item.body_clean, _ = sanitize(item.body)
+            from app.drafting import draft_response
+            d = draft_response(item)
+            if d:
+                print(f"\n  ── DRAFT COMMENT ({d['confidence']}) ──\n  " +
+                      d["draft_text"].replace("\n", "\n  "))
+                if d.get("review_reason"):
+                    print(f"  (review: {d['review_reason']})")
+            else:
+                print("  (draft skipped — set ANTHROPIC_API_KEY / run setup_wizard)")
+    print("\nDone. Nothing was posted — copy any draft into Skool yourself.")
+
+
+if __name__ == "__main__":
+    main()

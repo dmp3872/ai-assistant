@@ -20,8 +20,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.collectors import skool_parse as sp
+from app.collectors import skool_api
 from app.collectors.base import BaseCollector
 from app.models import NormalizedItem
+from app.security import get_secret
 from app.settings import get_settings
 
 # Re-exported so scripts/health checks can reference the DOM fallback selectors.
@@ -33,7 +35,7 @@ class SkoolCollector(BaseCollector):
 
     def __init__(self) -> None:
         self.cfg = get_settings().connector("skool")
-        self.community_url = self.cfg["community_url"].rstrip("/")
+        self.community_url = (self.cfg.get("community_url") or "").rstrip("/")
         self.classroom_url = self.cfg.get("classroom_url") or f"{self.community_url}/classroom"
         self.pace_ms = int(self.cfg.get("pace_ms_between_requests", 1500))
         self.profile = self.cfg.get("chrome_profile_path")
@@ -44,102 +46,100 @@ class SkoolCollector(BaseCollector):
         self.author_name = (self.cfg.get("author_name") or "").strip().lower()
         self.author_handles = {h.strip().lower().lstrip("@")
                                for h in (self.cfg.get("author_handles") or []) if h}
+        # PRIMARY: authenticated HTTP with your Skool session token (no browser).
+        # FALLBACK: Playwright on your logged-in profile (if no token stored).
+        self.token = get_secret("skool_auth_token")
+        self.use_token = bool(self.token)
 
-    # --- browser session -------------------------------------------------
-    def _launch(self):
-        """Open a persistent context on your logged-in Chrome profile (a copy of it,
-        set in config, so we never fight the live browser for the profile lock)."""
+    # --- page fetch: token HTTP (primary) or Playwright (fallback) --------
+    def _fetch_html(self, url: str) -> str:
+        """Return a Skool page's HTML. Uses your session token over plain HTTPS when
+        available (no browser); otherwise drives your logged-in Chrome profile."""
+        self._pace(self.pace_ms)
+        if self.use_token:
+            return skool_api.get_html(url, self.token)
         from playwright.sync_api import sync_playwright
-
         pw = sync_playwright().start()
         context = pw.chromium.launch_persistent_context(
-            user_data_dir=self.profile,
-            headless=True,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
-        page = context.new_page()
-        return pw, context, page
+            user_data_dir=self.profile, headless=True,
+            args=["--disable-blink-features=AutomationControlled"])
+        try:
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            self._pace(self.pace_ms)
+            return page.content()
+        finally:
+            context.close(); pw.stop()
 
-    def _goto(self, page, url: str):
-        page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        self._pace(self.pace_ms)
+    def _resolve_community_url(self) -> str:
+        """If community_url is unset/placeholder and we have a token, auto-discover
+        the user's first group."""
+        if self.community_url and "your-community" not in self.community_url:
+            return self.community_url
+        if self.use_token:
+            groups = skool_api.discover_groups(self.token)
+            if groups:
+                self.community_url = groups[0]["url"]
+                self.classroom_url = f"{self.community_url}/classroom"
+        return self.community_url
 
     def health_check(self) -> bool:
         try:
-            pw, context, page = self._launch()
-            try:
-                self._goto(page, self.community_url)
-                return bool(sp.parse_feed(page.content(), self.community_url))
-            finally:
-                context.close(); pw.stop()
+            if self.use_token:
+                return skool_api.check_auth(self.token)
+            return bool(sp.parse_feed(self._fetch_html(self.community_url), self.community_url))
         except Exception:
             return False
+
+    def discover_groups(self) -> list[dict]:
+        """List the communities this token can see (name, slug, url)."""
+        return skool_api.discover_groups(self.token) if self.use_token else []
 
     # --- incremental feed collection (every cycle) -----------------------
     def fetch_new(self, cursor: str | None):
         since = float(cursor) if cursor else 0.0
         newest = since
         items: list[NormalizedItem] = []
-
-        pw, context, page = self._launch()
-        try:
-            self._goto(page, self.community_url)
-            for rec in sp.parse_feed(page.content(), self.community_url):
-                dt, ts = self._to_dt(rec.get("created_at"))
-                if ts and ts <= since:
-                    continue
-                newest = max(newest, ts)
-                items.append(self._normalize(rec, dt))
-        finally:
-            context.close(); pw.stop()
+        url = self._resolve_community_url()
+        for rec in sp.parse_feed(self._fetch_html(url), url):
+            dt, ts = self._to_dt(rec.get("created_at"))
+            if ts and ts <= since:
+                continue
+            newest = max(newest, ts)
+            items.append(self._normalize(rec, dt))
         return items, str(newest)
 
     # --- one-time historical import (feed + comments + classroom) ---------
     def historical_import(self) -> list[NormalizedItem]:
         collected: list[NormalizedItem] = []
-        pw, context, page = self._launch()
-        try:
-            # 1) Feed history: scroll to load older posts, then parse everything once.
-            self._goto(page, self.community_url)
-            for _ in range(self.feed_scrolls):
-                page.mouse.wheel(0, 5000)
-                self._pace(self.pace_ms)
-            for rec in sp.parse_feed(page.content(), self.community_url):
-                dt, _ = self._to_dt(rec.get("created_at"))
-                collected.append(self._normalize(rec, dt))
-
-            # 2) Classroom: every course -> every lesson -> lesson text.
-            collected.extend(self._import_classroom(page))
-        finally:
-            context.close(); pw.stop()
+        url = self._resolve_community_url()
+        # Feed: SSR returns the first page; deep history paginates via Skool's API
+        # (a focused follow-up). Incremental collection keeps it current after this.
+        for rec in sp.parse_feed(self._fetch_html(url), url):
+            dt, _ = self._to_dt(rec.get("created_at"))
+            collected.append(self._normalize(rec, dt))
+        collected.extend(self._import_classroom())
         return collected
 
     def import_classroom(self) -> list[NormalizedItem]:
         """Public entry to (re)import just the classroom, without the feed."""
-        pw, context, page = self._launch()
-        try:
-            return self._import_classroom(page)
-        finally:
-            context.close(); pw.stop()
+        self._resolve_community_url()
+        return self._import_classroom()
 
-    def _import_classroom(self, page) -> list[NormalizedItem]:
+    def _import_classroom(self) -> list[NormalizedItem]:
         lessons_out: list[NormalizedItem] = []
-        self._goto(page, self.classroom_url)
-        courses = sp.parse_classroom_index(page.content(), self.community_url)
+        courses = sp.parse_classroom_index(self._fetch_html(self.classroom_url), self.community_url)
         for course in courses[: self.max_courses]:
             try:
-                self._goto(page, course["url"])
+                lessons = sp.parse_course(self._fetch_html(course["url"]), course["url"])
             except Exception:
                 continue
-            lessons = sp.parse_course(page.content(), course["url"])
             for lesson in lessons[: self.max_lessons_per_course]:
                 try:
-                    self._goto(page, lesson["url"])
-                    parsed = sp.parse_lesson(page.content(), lesson.get("id"))
+                    parsed = sp.parse_lesson(self._fetch_html(lesson["url"]), lesson.get("id"))
                 except Exception:
                     continue
-                body = parsed.get("body") or ""
-                if not body.strip():
+                if not (parsed.get("body") or "").strip():
                     continue
                 lessons_out.append(self._normalize_lesson(course, lesson, parsed))
         return lessons_out

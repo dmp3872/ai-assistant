@@ -82,10 +82,13 @@ def setup_telegram() -> None:
 
 
 def setup_skool() -> None:
-    print("\n[4/4] Skool import — feed history + classroom (optional, one-time)")
+    print("\n[4/4] Skool — session token + import (optional)")
+    print("  Skool serves reads via Next.js SSR, so an authenticated HTTPS GET (no")
+    print("  browser) returns everything. Export your `auth_token` cookie with a tool")
+    print("  like cookie-editor.com, then store it here.")
+    _prompt_secret("skool_auth_token", "Skool auth_token cookie")
     print("  Tip: set skool.author_name in config so your posts/comments route into")
-    print("  your voice namespaces. Run `python scripts/import_skool.py --debug` first")
-    print("  to eyeball that authorship + fields parsed correctly.")
+    print("  your voice namespaces. Then: `python scripts/skool_pull.py --draft`.")
     ans = input("  Run the full Skool import now? [y/N]: ").strip().lower()
     if ans != "y":
         print("  skipped — run `python scripts/import_skool.py` anytime.")

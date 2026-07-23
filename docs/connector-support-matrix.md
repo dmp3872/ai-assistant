@@ -29,9 +29,20 @@ logs in as **your** account and reads DMs, chosen groups, mentions, and replies.
 string is stored in Keychain.
 
 ### Skool — read this carefully
-There is **no stable official Skool API.** Third-party APIs have existed and been
-suspended; endpoint availability is inconsistent. So we drive your **already-logged-in
-browser** with Playwright:
+There is **no stable official Skool API.** But Skool serves reads via **Next.js SSR**,
+so an **authenticated HTTPS GET** (sending your `auth_token` session cookie) returns the
+page with all data embedded in `__NEXT_DATA__` — no browser required. This is the
+primary path (`app/collectors/skool_api.py`); Playwright on your logged-in profile is
+the fallback when no token is stored.
+
+**Token:** export your `auth_token` cookie once (e.g. with cookie-editor.com) and store
+it via the setup wizard — it lives in the macOS Keychain, never in the repo. It's a
+credential; Skool's WAF can rotate it, so re-export if requests start failing. Pull with:
+`python scripts/skool_pull.py --draft` (lists posts you haven't answered + drafts a
+comment for each). **Note:** a cloud sandbox blocks `skool.com` at the network layer —
+this runs on your Mac.
+
+Historical/incremental collection then works the same way:
 - One **initial historical import** of your posts, comments, **and full classroom**
   (every course → every lesson → lesson text).
 - **Incremental** collection every cycle (new posts/comments/mentions since cursor).

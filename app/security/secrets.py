@@ -22,9 +22,14 @@ def get_secret(account: str, required: bool = False) -> str | None:
     """Fetch a secret by account name (e.g. 'anthropic_api_key')."""
     value: str | None = None
     if _HAVE_KEYRING:
+        # Some keyring backends (e.g. a misconfigured Linux SecretService) hard-panic
+        # via pyo3, raising BaseException — catch broadly and fall back, but never
+        # swallow interrupts.
         try:
             value = keyring.get_password(SERVICE, account)
-        except Exception:
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException:
             value = None
     if value is None:
         value = os.getenv(account.upper())

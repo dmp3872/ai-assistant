@@ -21,8 +21,11 @@ connectors:
     include_mentions_everywhere: true
   skool:
     enabled: true
-    community_url: "https://www.skool.com/your-community"
+    community_url: "https://www.skool.com/research-radar"
     classroom_url: ""                # optional; defaults to <community_url>/classroom
+    # AUTH: store your Skool `auth_token` cookie in Keychain (setup wizard). With a
+    # token, reads use authenticated HTTPS (no browser). Without one, it falls back
+    # to Playwright on your logged-in Chrome profile.
     # Playwright drives your logged-in Chrome profile (copied, not the live one).
     chrome_profile_path: "~/Library/Application Support/Google/Chrome/Default"
     incremental_only: true
