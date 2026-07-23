@@ -12,11 +12,11 @@ import json
 from datetime import datetime, timezone
 
 from app.classifiers import classify, classify_gmail, is_duplicate, tab_for_category
+from app.classifiers import sale_details
 from app.collectors import get_enabled_collectors
 from app.db import get_session, init_db
 from app.db.models import Draft, Item, Sale
-from app.drafting import draft_response, extract_sale
-from app.drafting.sales_extractor import find_contradiction
+from app.drafting import draft_response
 from app.models import NormalizedItem
 from app.retrieval import ingest_skool
 from app.scheduler.lock import FileLock, LockHeld
@@ -74,14 +74,24 @@ def _handle_item(item: NormalizedItem) -> bool:
             return False
         item_id = _persist_item(item)
 
-        # PeptidePrice sales -> structured extraction + contradiction flag
+        # PeptidePrice sales -> structured extraction with ABSOLUTE end date
         if item.category == "peptideprice_sales":
-            fields = extract_sale(item)
-            if fields:
-                contradicts = find_contradiction(item_id, fields)
-                with get_session() as s:
-                    s.add(Sale(item_id=item_id, contradicts_sale_id=contradicts,
-                               **fields.model_dump()))
+            d = sale_details.extract(item)
+            with get_session() as s:
+                # contradiction: same vendor, a different end date than before
+                contradicts = None
+                if d.get("vendor") and d.get("end_iso"):
+                    prior = (s.query(Sale)
+                             .filter(Sale.vendor == d["vendor"], Sale.item_id != item_id,
+                                     Sale.end_iso != None)  # noqa: E711
+                             .order_by(Sale.id.desc()).first())
+                    if prior and prior.end_iso and prior.end_iso != d["end_iso"]:
+                        contradicts = prior.id
+                s.add(Sale(item_id=item_id, vendor=d["vendor"], promo_name=d["promo_name"],
+                           discount=d["discount"], coupon_code=d["coupon_code"],
+                           free_shipping_threshold=d["free_shipping_threshold"],
+                           end_date=d["end_date"], end_iso=d["end_iso"], end_tz=d["end_tz"],
+                           confidence=d["confidence"], contradicts_sale_id=contradicts))
 
         # Draftable items -> voice draft
         if item.needs_response and not item.spam:

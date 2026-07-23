@@ -2,6 +2,11 @@ const $=(s,e=document)=>e.querySelector(s), $$=(s,e=document)=>[...e.querySelect
 const api=(p,o)=>fetch("/api"+p,o).then(r=>r.json());
 const toast=m=>{const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),1700);};
 const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function fmtDate(iso){if(!iso)return"";const d=new Date(iso);if(isNaN(d))return"";
+  const days=Math.floor((Date.now()-d.getTime())/864e5);
+  const abs=d.toLocaleDateString(undefined,{month:"short",day:"numeric"});
+  const rel=days<=0?"today":days===1?"1d ago":days+"d ago";
+  return `${abs} · ${rel}`;}
 const LABEL={priority:"Feed",community:"Community",sales:"Sales",content:"Content",personal:"Personal",email:"Email"};
 let tab="priority", sub="all";
 
@@ -25,7 +30,7 @@ function itemCard(it){
   return `<article class="card" data-id="${it.id}">
     <div class="card-top"><div class="avatar ${av}">${glyph}</div>
       <div class="who"><div class="name">${esc(it.author||"Unknown")}</div>
-        <div class="sub"><span class="chip">${esc(it.source)}${it.category?" · "+esc(it.category.replace("_"," ")):""}</span></div></div>
+        <div class="sub"><span class="chip">${esc(it.source)}${it.category?" · "+esc(it.category.replace("_"," ")):""}</span>${it.created_at?` · <span>${fmtDate(it.created_at)}</span>`:""}</div></div>
       ${pill(it.priority)}</div>
     ${it.title?`<div class="content" style="font-weight:600">${esc(it.title)}</div>`:""}
     <div class="content" style="color:var(--muted)">${esc(it.summary||"")}</div>

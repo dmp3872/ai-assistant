@@ -77,7 +77,8 @@ class Sale(Base):
     stacking_rules: Mapped[str | None] = mapped_column(Text, nullable=True)
     coupon_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     start_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    end_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    end_date: Mapped[str | None] = mapped_column(String(64), nullable=True)   # display, e.g. "Jul 21"
+    end_iso: Mapped[str | None] = mapped_column(String(10), nullable=True)    # sortable YYYY-MM-DD
     end_tz: Mapped[str | None] = mapped_column(String(64), nullable=True)
     exclusions: Mapped[str | None] = mapped_column(Text, nullable=True)
     free_shipping_threshold: Mapped[str | None] = mapped_column(String(128), nullable=True)

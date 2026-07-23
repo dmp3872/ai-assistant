@@ -78,9 +78,10 @@ def summary():
         ]
         # sales ending soon (has an end_date)
         sales_soon = [
-            {"vendor": r.vendor, "promo": r.promo_name, "end": r.end_date}
-            for r in s.query(Sale).filter(Sale.end_date != None)  # noqa: E711
-            .order_by(desc(Sale.id)).limit(6).all()
+            {"vendor": r.vendor, "promo": r.promo_name,
+             "end": f"{r.end_date}{(' ' + r.end_tz) if r.end_tz else ''}"}
+            for r in s.query(Sale).filter(Sale.end_iso != None)  # noqa: E711
+            .order_by(Sale.end_iso.asc()).limit(6).all()  # soonest-ending first
         ]
     return {"counts": counts,
             "scan": {"scanned": scanned, "relevant": relevant,
