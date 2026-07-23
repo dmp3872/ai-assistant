@@ -7,9 +7,11 @@ run:
 connectors:
   gmail:
     enabled: true
-    # Gmail search applied incrementally each run. Keep it broad; classifier sorts it.
-    query: "newer_than:2d -category:promotions in:anywhere"
-    max_results: 100
+    # Applied incrementally each run. Keep it BROAD — includes Promotions (where vendor
+    # sales land) and all categories; the classifier + vendor allowlist sort it out.
+    # Excludes only your own sent mail, chats, and drafts.
+    query: "newer_than:2d -in:sent -in:chats -in:drafts"
+    max_results: 150
   calendar:
     enabled: true
     calendar_ids: ["primary"]
@@ -47,10 +49,16 @@ connectors:
     # `python scripts/skool_pull.py --inspect` and override here if needed.
     feed_page_template: ""           # e.g. "{origin}/_next/data/{buildId}/{slug}.json?group={slug}&p={page}"
 
-# Phase 2/3 — off until built
+  tiktok:
+    enabled: true
+    username: "dereklifts2"          # your creator handle (no @)
+    # optional: if public fetches get bot-blocked, export your TikTok cookie and store
+    # it as `tiktok_cookie` in Keychain (setup wizard). v1 pulls new videos + comment
+    # counts with real links; comment alerts also arrive via TikTok emails in Gmail.
+
+# Phase 2 — off until built
   imessage:  { enabled: false }
   whatsapp:  { enabled: false }
-  tiktok:    { enabled: false }
 
 classification:
   spam_threshold: 0.7
