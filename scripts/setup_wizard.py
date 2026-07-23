@@ -4,7 +4,11 @@ Stores secrets in the macOS Keychain, runs Google OAuth, logs into Telegram, and
 kick off the one-time Skool historical import. It never prints secrets and never writes
 them to disk. Safe to re-run; it only prompts for what's missing.
 """
+
 from __future__ import annotations
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
 
 import json
 import sys

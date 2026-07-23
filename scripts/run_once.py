@@ -3,7 +3,11 @@
     python scripts/run_once.py             # all enabled connectors
     python scripts/run_once.py --only skool  # just one, for selector debugging
 """
+
 from __future__ import annotations
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
 
 import argparse
 import json

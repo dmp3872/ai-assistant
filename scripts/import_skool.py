@@ -9,7 +9,11 @@ This is the one-time (re-runnable) deep import. The 45-minute cycle keeps things
 incrementally afterward. Bodies are HTML-stripped before embedding; items are routed by
 authorship/kind (your posts/comments -> voice namespaces, lessons -> `courses`).
 """
+
 from __future__ import annotations
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
 
 import argparse
 

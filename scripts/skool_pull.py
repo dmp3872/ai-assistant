@@ -15,7 +15,11 @@ your Mac has no such block.
 
 The token is a credential — it is stored in the macOS Keychain, never in the repo.
 """
+
 from __future__ import annotations
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
 
 import argparse
 
