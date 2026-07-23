@@ -25,6 +25,22 @@ def have_token() -> bool:
     return bool(get_secret("skool_auth_token"))
 
 
+def decode_user_id(token: str | None) -> str | None:
+    """Read your Skool user_id out of the auth_token JWT payload (base64, not a
+    secret to decode) so mention arrays (which reference user ids) can match you."""
+    if not token or token.count(".") < 2:
+        return None
+    import base64
+    import json
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)  # pad base64url
+        data = json.loads(base64.urlsafe_b64decode(payload))
+        return data.get("user_id") or data.get("userId") or data.get("sub")
+    except Exception:
+        return None
+
+
 def _client(token: str) -> httpx.Client:
     return httpx.Client(
         headers={"User-Agent": _UA, "Accept": "text/html,application/xhtml+xml",

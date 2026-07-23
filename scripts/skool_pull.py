@@ -100,9 +100,48 @@ def main() -> None:
 
     recs = collector.deep_feed()  # all pages (token path)
     n_posts = len([r for r in recs if r["kind"] == "post"])
+
+    # highest signal: anything that @-mentions you or replies on your own post
+    mentions, replies = [], []
+    seen: set = set()
+    for r in recs:
+        if r["id"] in seen:
+            continue
+        if collector._mentions_me(r):
+            mentions.append(r); seen.add(r["id"])
+        elif (r["kind"] == "comment" and collector._is_me(r.get("parent_author"), None)
+              and not collector._is_me(r.get("author"), None)):
+            replies.append(r); seen.add(r["id"])
+
+    def _draft_for(rec):
+        if not args.draft:
+            return
+        item = NormalizedItem(source="skool", source_id=rec["id"], author=rec["author"],
+                              url=rec["url"], title=rec.get("title") or "Skool",
+                              body=rec.get("body") or "", category="community",
+                              needs_response=True)
+        item.body_clean, _ = sanitize(item.body)
+        from app.drafting import draft_response
+        d = draft_response(item)
+        if d:
+            print("  ── DRAFT COMMENT (%s) ──\n  %s" %
+                  (d["confidence"], d["draft_text"].replace("\n", "\n  ")))
+        else:
+            print("  (draft skipped — set ANTHROPIC_API_KEY / run setup_wizard)")
+
+    print(f"\n@ MENTIONS & DIRECT TAGS: {len(mentions)}\n" + "=" * 48)
+    for r in mentions:
+        print(f"\n▸ {r['title']}\n  by {r['author']} · {r['url']}\n  {(r['body'] or '')[:200]}")
+        _draft_for(r)
+
+    print(f"\nNEW REPLIES ON YOUR POSTS: {len(replies)}\n" + "=" * 48)
+    for r in replies:
+        print(f"\n▸ {r['author']} replied · {r['url']}\n  {(r['body'] or '')[:200]}")
+        _draft_for(r)
+
     unanswered = _unanswered(collector, recs)[: args.limit]
     print(f"\nScanned {n_posts} posts across all pages · "
-          f"you haven't replied to {len(unanswered)}\n" + "-" * 48)
+          f"posts you haven't replied to: {len(unanswered)}\n" + "-" * 48)
     for p in unanswered:
         print(f"\n▸ {p['title']}\n  by {p['author']} · {p['url']}")
         print(f"  {(p['body'] or '')[:200]}")

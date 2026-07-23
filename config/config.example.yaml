@@ -34,6 +34,8 @@ connectors:
     # --- authorship: which content is YOURS (routes into voice namespaces) ---
     author_name: "Derek Pruski"      # your Skool display name, matched case-insensitively
     author_handles: ["derek"]        # optional @handles that are also you
+    author_user_id: ""               # optional; auto-decoded from your auth_token if blank.
+                                     # Used to match @-mentions (which reference user ids).
     # --- historical/classroom import tuning ---
     historical_feed_scrolls: 40      # (Playwright fallback) scrolls to load feed history
     max_courses: 100                 # safety caps for the classroom crawl

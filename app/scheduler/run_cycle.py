@@ -46,6 +46,12 @@ def _enrich(item: NormalizedItem) -> NormalizedItem:
         item.priority = result["priority"]
         item.needs_response = result["needs_response"]
         item.spam = result["spam"]
+        # Skool @-mentions and replies on your own posts always need you, regardless
+        # of what the local classifier guessed.
+        if item.source == "skool" and (item.raw.get("mentions_me") or item.raw.get("on_my_post")):
+            item.needs_response = True
+            item.spam = False
+            item.priority = "today"
     return item
 
 

@@ -42,6 +42,7 @@ TITLE_KEYS = ["name", "title", "label", "headline"]
 AUTHOR_CONTAINER_KEYS = ["user", "author", "createdBy", "owner", "member", "poster"]
 AUTHOR_NAME_KEYS = ["name", "displayName", "fullName", "firstName"]
 COMMENT_KEYS = ["comments", "replies", "children"]
+MENTION_KEYS = ["mentions", "mentionedUsers", "taggedUsers", "mentioned", "tags"]
 SLUG_KEYS = ["slug", "permalink", "handle"]
 TIME_KEYS = ["createdAt", "created_at", "publishedAt", "updatedAt", "timestamp"]
 
@@ -120,6 +121,45 @@ def _looks_like_post(d: dict) -> bool:
     return bool(d.get("id")) and bool(_content_of(d)) and bool(_author_of(d))
 
 
+def _mentions_of(node: dict) -> list[str]:
+    """Collect any user ids / names referenced in a node's mention/tag fields."""
+    out: list[str] = []
+    for k in MENTION_KEYS:
+        v = node.get(k)
+        if isinstance(v, list):
+            for m in v:
+                if isinstance(m, str):
+                    out.append(m)
+                elif isinstance(m, dict):
+                    for key in ("id", "user_id", "userId", "name", "displayName", "handle"):
+                        if isinstance(m.get(key), str):
+                            out.append(m[key])
+                    md = m.get("metadata")
+                    if isinstance(md, dict):
+                        for key in ("name", "displayName", "handle"):
+                            if isinstance(md.get(key), str):
+                                out.append(md[key])
+    return out
+
+
+def mentions_user(record: dict, name: str | None, handles, user_id: str | None) -> bool:
+    """Does this feed record @-mention or directly reference the given user?
+    Matches on mention-field user ids/names and on '@name'/'@handle' in the body."""
+    name = (name or "").strip().lower()
+    handles = {h.strip().lower().lstrip("@") for h in (handles or [])}
+    mentions = [str(m).lower() for m in (record.get("mentions") or [])]
+    if user_id and any(user_id.lower() in m for m in mentions):
+        return True
+    if name and any(name in m for m in mentions):
+        return True
+    body = (record.get("body") or "").lower()
+    if name and f"@{name}" in body:
+        return True
+    if any(f"@{h}" in body for h in handles):
+        return True
+    return False
+
+
 def _comments_of(post: dict) -> list[dict]:
     for k in COMMENT_KEYS:
         v = post.get(k)
@@ -178,13 +218,16 @@ def feed_records_from_data(data: Any, community_url: str) -> list[dict]:
     for post in _iter_posts(data):
         pid = str(post.get("id"))
         purl = post_url(community_url, post)
+        post_author = _author_of(post)
         out.append({"kind": "post", "id": pid, "title": _title_of(post) or "Skool post",
-                    "author": _author_of(post), "body": _content_of(post) or "",
-                    "url": purl, "created_at": _time_of(post), "parent_id": None})
+                    "author": post_author, "body": _content_of(post) or "",
+                    "url": purl, "created_at": _time_of(post), "parent_id": None,
+                    "parent_author": None, "mentions": _mentions_of(post)})
         for c in _comments_of(post):
             out.append({"kind": "comment", "id": f"{pid}:c:{c.get('id')}", "title": None,
                         "author": _author_of(c), "body": _content_of(c) or "",
-                        "url": purl, "created_at": _time_of(c), "parent_id": pid})
+                        "url": purl, "created_at": _time_of(c), "parent_id": pid,
+                        "parent_author": post_author, "mentions": _mentions_of(c)})
     return out
 
 

@@ -52,6 +52,8 @@ class SkoolCollector(BaseCollector):
         # FALLBACK: Playwright on your logged-in profile (if no token stored).
         self.token = get_secret("skool_auth_token")
         self.use_token = bool(self.token)
+        # your Skool user_id, so @-mentions (which reference user ids) match you
+        self.user_id = self.cfg.get("author_user_id") or skool_api.decode_user_id(self.token)
 
     # --- page fetch: token HTTP (primary) or Playwright (fallback) --------
     def _fetch_html(self, url: str) -> str:
@@ -162,8 +164,21 @@ class SkoolCollector(BaseCollector):
         return lessons_out
 
     # --- normalization ---------------------------------------------------
+    def _mentions_me(self, rec: dict) -> bool:
+        return sp.mentions_user(rec, self.author_name, self.author_handles, self.user_id)
+
     def _normalize(self, rec: dict, dt: datetime | None) -> NormalizedItem:
         kind = rec.get("kind", "post")
+        mentions_me = self._mentions_me(rec)
+        # a new comment on YOUR post, by someone else -> you likely want to reply
+        on_my_post = (kind == "comment"
+                      and self._is_me(rec.get("parent_author"), None)
+                      and not self._is_me(rec.get("author"), None))
+        title = rec.get("title") or ("Skool comment" if kind == "comment" else "Skool post")
+        if mentions_me:
+            title = f"@you · {title}"
+        elif on_my_post:
+            title = f"reply on your post · {title}"
         return NormalizedItem(
             source=self.name,
             source_id=str(rec["id"]),
@@ -171,10 +186,12 @@ class SkoolCollector(BaseCollector):
             author=rec.get("author"),
             url=rec.get("url"),
             created_at=dt,
-            title=rec.get("title") or ("Skool comment" if kind == "comment" else "Skool post"),
+            title=title,
             body=rec.get("body", ""),
-            raw={"kind": kind, "authored_by_me": self._is_me(rec.get("author"),
-                                                             rec.get("author_handle"))},
+            raw={"kind": kind,
+                 "authored_by_me": self._is_me(rec.get("author"), rec.get("author_handle")),
+                 "mentions_me": mentions_me,
+                 "on_my_post": on_my_post},
         )
 
     def _normalize_lesson(self, course: dict, lesson: dict, parsed: dict) -> NormalizedItem:
