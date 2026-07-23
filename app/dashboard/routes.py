@@ -121,6 +121,12 @@ def summary():
             else:
                 relevant += 1
         counts["handled"] = s.query(Item).filter(Item.handled == True).count()  # noqa: E712
+    from app import planner
+    from app.db.models import DailyTask
+    today = datetime.now(timezone.utc).date().isoformat()
+    planner.ensure_day(today)
+    with get_session() as s2:
+        counts["plan"] = s2.query(DailyTask).filter_by(day=today, done=False).count()
         connectors = [
             {"name": c.name, "status": c.status,
              "last_success": c.last_success_at.isoformat() if c.last_success_at else None}
@@ -222,6 +228,19 @@ def save_review(item_id: int, payload: dict = Body(...)):
     if final_text and not rejected:
         ingest_review_examples([{"text": final_text, "url": url or "", "ref_id": str(item_id)}])
     return {"ok": True}
+
+
+@router.get("/plan")
+def get_plan(date: str | None = None):
+    from app import planner
+    day = date or datetime.now(timezone.utc).date().isoformat()
+    return planner.plan(day)
+
+
+@router.post("/plan/task/{task_id}/toggle")
+def toggle_task(task_id: int):
+    from app import planner
+    return {"done": planner.toggle(task_id)}
 
 
 @router.get("/content/recommendation")

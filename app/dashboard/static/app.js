@@ -59,6 +59,8 @@ function salesCard(s){
 async function render(){
   const feed=$("#feed");feed.innerHTML='<div class="empty">Loading…</div>';
   $("#subfilter").classList.toggle("on",tab==="email");
+  $("#sortbar").style.display=(tab==="plan")?"none":"";
+  if(tab==="plan")return renderPlan();
   const q="&sort="+sortMode;
   if(tab==="sales"){
     const [{items:sitems},{sales}]=await Promise.all([api("/items?tab=sales"+q),api("/sales")]);
@@ -79,6 +81,23 @@ async function render(){
   const empty=tab==="handled"?"Nothing handled yet.":`Nothing in ${LABEL[tab]} right now.`;
   feed.innerHTML=head+(list.length?list.map(itemCard).join(""):`<div class="empty">${empty}</div>`);
   const rb=$("#rec-btn");if(rb)rb.onclick=loadRecommendation;
+}
+
+async function renderPlan(){
+  const feed=$("#feed");
+  const p=await api("/plan");
+  const check=t=>`<label class="todo ${t.done?"done":""}"><input type="checkbox" data-task="${t.id}" ${t.done?"checked":""}><span>${esc(t.label)}</span></label>`;
+  let h=`<div class="planhdr"><h2>Today · ${esc(p.day)}</h2><div class="sub" style="color:var(--muted);font-size:13px">Content targets reset daily · calendar events blended in by time</div></div>`;
+  if(p.schedule&&p.schedule.length)
+    h+=`<div class="planblock"><h3>📅 Schedule</h3>`+p.schedule.map(e=>
+      `<div class="sched"><span class="t">${esc(e.time)}</span><span>${esc(e.title)}</span>${e.url?`<a class="act" href="${esc(e.url)}" target="_blank">Open in Calendar</a>`:""}</div>`).join("")+`</div>`;
+  if(p.free&&p.free.length)
+    h+=`<div class="planblock"><h3>🟢 Free time</h3><div class="freerow">`+p.free.map(f=>`<span class="chip">${esc(f)}</span>`).join("")+`</div></div>`;
+  (p.quotas||[]).forEach(qk=>{
+    h+=`<div class="planblock"><h3>${esc(qk.label)}<span class="prog">${qk.done}/${qk.total} done</span></h3>`+qk.tasks.map(check).join("")+`</div>`;});
+  if(p.todos&&p.todos.length)
+    h+=`<div class="planblock"><h3>✓ To-do</h3>`+p.todos.map(check).join("")+`</div>`;
+  feed.innerHTML=h;
 }
 
 async function loadRecommendation(){
@@ -130,6 +149,13 @@ $("#feed").addEventListener("click",async e=>{
     toast("Copied — paste it into the source");return;}
   if(e.target.closest("[data-handle]")){if(id)await api(`/items/${id}/handled`,{method:"POST"});card.classList.add("gone");setTimeout(()=>{card.remove();refreshChrome();},330);toast("Marked handled");return;}
   if(e.target.closest("[data-snooze]")){if(id)await api(`/items/${id}/snooze`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({hours:24})});card.classList.add("gone");setTimeout(()=>{card.remove();refreshChrome();},330);toast("Snoozed 24h");return;}
+});
+
+$("#feed").addEventListener("change",async e=>{
+  const cb=e.target.closest("input[data-task]");if(!cb)return;
+  await api(`/plan/task/${cb.dataset.task}/toggle`,{method:"POST"});
+  const lbl=cb.closest(".todo");if(lbl)lbl.classList.toggle("done",cb.checked);
+  refreshChrome();
 });
 
 function toggleTheme(){const r=document.documentElement;const cur=r.getAttribute("data-theme")||(matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light");r.setAttribute("data-theme",cur==="dark"?"light":"dark");}

@@ -112,6 +112,22 @@ class ReviewHistory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class DailyTask(Base):
+    """A checkable item for a single day. Content quotas seed fresh each day (daily
+    reset = each day has its own rows); calendar-derived to-dos can also live here."""
+    __tablename__ = "daily_tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[str] = mapped_column(String(10), index=True)   # YYYY-MM-DD
+    kind: Mapped[str] = mapped_column(String(24))              # tiktok/skool/substack/youtube/todo
+    label: Mapped[str] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    scheduled_time: Mapped[str | None] = mapped_column(String(5), nullable=True)  # HH:MM
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id: Mapped[int] = mapped_column(primary_key=True)
