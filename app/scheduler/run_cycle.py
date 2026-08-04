@@ -147,6 +147,15 @@ def run_cycle() -> dict:
                         new_count += 1
                         by_source[item.source] = by_source.get(item.source, 0) + 1
 
+            # Keep the content shelf stocked — cluster new questions, top up the queue.
+            # Guarded: a generation hiccup never fails an otherwise-good collection run.
+            content_result: dict = {}
+            try:
+                from app.content import engine as content_engine
+                content_result = content_engine.replenish()
+            except Exception as exc:
+                audit("error", stage="content_replenish", error=str(exc))
+
             audit("collect", stage="cycle_end", new=new_count, by_source=by_source)
             if new_count:
                 summary = ", ".join(f"{k}:{v}" for k, v in by_source.items())
@@ -155,6 +164,7 @@ def run_cycle() -> dict:
                 "status": "ok",
                 "new": new_count,
                 "by_source": by_source,
+                "content": content_result,
                 "duration_s": (datetime.now(timezone.utc) - started).total_seconds(),
             }
     except LockHeld:

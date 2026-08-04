@@ -88,16 +88,58 @@ class Sale(Base):
 
 
 class ContentOpportunity(Base):
+    """A recurring question clustered across community activity — the seed for the
+    Answer Bank. `norm_key` is the dedup/cluster key; `answer_piece_id` links to the
+    canonical answer (a ContentPiece of kind='answer') once one is drafted."""
     __tablename__ = "content_opportunities"
     id: Mapped[int] = mapped_column(primary_key=True)
     question: Mapped[str] = mapped_column(Text)
+    norm_key: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
     occurrences: Mapped[int] = mapped_column(Integer, default=1)
     sources: Mapped[str | None] = mapped_column(Text, nullable=True)  # json
     suggested_format: Mapped[str | None] = mapped_column(String(128), nullable=True)
     related_content: Mapped[str | None] = mapped_column(Text, nullable=True)  # json
     outline: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open|answered|dismissed
+    answer_piece_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     first_seen: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_seen: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ContentPiece(Base):
+    """A single copy-ready piece of content in the queue — the stocked shelf.
+
+    Nothing here is ever auto-posted. A piece moves queued -> approved -> posted only
+    by you, from the Studio tab. `origin` records what grounded it (your classroom, a
+    recurring question, a live sale); `dedupe_key` stops the engine regenerating the
+    same topic on the next cycle.
+    """
+    __tablename__ = "content_pieces"
+    __table_args__ = (UniqueConstraint("dedupe_key", name="uq_content_dedupe"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel: Mapped[str] = mapped_column(String(16), index=True)     # skool|tiktok|substack|youtube
+    kind: Mapped[str] = mapped_column(String(24), default="post")    # post|question_prompt|answer|sale_announcement
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hook: Mapped[str | None] = mapped_column(Text, nullable=True)    # scroll-stopping opener
+    body: Mapped[str] = mapped_column(Text)                          # full copy-ready text
+    cta: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    # queued|approved|scheduled|posted|discarded
+    origin: Mapped[str] = mapped_column(String(24), default="classroom")  # classroom|opportunity|sale|manual
+    origin_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    opportunity_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    angle: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[str | None] = mapped_column(Text, nullable=True)    # json list
+    confidence: Mapped[str] = mapped_column(String(16), default="medium")
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sources_used: Mapped[str | None] = mapped_column(Text, nullable=True)  # json
+    model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    dedupe_key: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    scheduled_day: Mapped[str | None] = mapped_column(String(10), index=True, nullable=True)  # YYYY-MM-DD
+    edited_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # what you actually posted
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class ReviewHistory(Base):

@@ -20,8 +20,14 @@ It **never sends, posts, edits, or deletes** anything. You review and copy.
   deep-history pagination + classroom + @-mentions + replies-to-you), **TikTok**
   (profile videos + comment counts).
 - Dashboard: Feed, Plan (daily quotas + calendar), Community (Skool), Sales (vendor
-  allowlist), TikTok, Content (your posts + AI recommendation), Personal, Email
-  (Work/Personal), Handled. Sort newest/oldest/relevant. PWA (installs to phone).
+  allowlist), TikTok, Content (your posts + AI recommendation), **Studio (content
+  system)**, Personal, Email (Work/Personal), Handled. Sort newest/oldest/relevant.
+  PWA (installs to phone).
+- **Content system (Studio):** every cycle it clusters recurring community questions
+  into an **Answer Bank** (one canonical answer each) and tops up a per-channel **Post
+  Queue** to target depth, grounded only in your own content. Pieces queue for review
+  (Copy / Posted / Discard) on Studio and Plan. Still read-only — it stocks the shelf,
+  you post. Config under `content:`; details in `docs/content-system.md`.
 - Vendor allowlist (your 52 companies) + new-sale-only filter + absolute date resolution.
 - Daily planner (6 TikTok / 7 Skool / 3 Substack / 1 YouTube, resets daily).
 - Security: Keychain secrets, audit log, emergency stop, `scripts/verify.py` provenance.

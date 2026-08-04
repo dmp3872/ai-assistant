@@ -58,9 +58,33 @@ tools, still gated behind manual approval.)
 1. **Priority Inbox** — executive overview across all sources
 2. **PeptidePrice Sales** — structured vendor promo extraction (dates, codes, exclusions)
 3. **Community** — Skool questions/comments/mentions with copy-ready drafts
-4. **Content Opportunities** — recurring questions clustered across channels
-5. **Personal / Admin** — accountant, lawyer, calendar, employees (kept separate)
-6. **Review History** — your drafts vs. what you actually posted → learns your style
+4. **Studio** — the content system: a stocked shelf of ready-to-post posts + a Q&A
+   answer bank (see below)
+5. **Plan** — daily content quotas, each slot backed by a real queued draft to copy
+6. **Personal / Admin** — accountant, lawyer, calendar, employees (kept separate)
+7. **Review History** — your drafts vs. what you actually posted → learns your style
+
+---
+
+## The content system (Studio)
+
+The reply drafter is *reactive* — it waits for a question. **Studio is proactive**: it
+keeps you from ever staring at a blank page. Every 45-minute cycle it:
+
+- **Clusters recurring questions** from your Skool community into an **Answer Bank** and
+  drafts one canonical, reusable answer per question — so a reply always exists.
+- **Tops up a Post Queue** per channel (Skool / TikTok / Substack / YouTube) to a target
+  depth with fresh posts, grounded **only** in your own imported content (classroom,
+  past posts) via the public retrieval namespaces — never personal/financial data.
+
+Everything queues for **your** review in Studio and on the Plan tab: edit inline, one-tap
+**Copy**, then **Posted** (which learns from what you actually posted) or **Discard**.
+Generation is capped per cycle to protect your Anthropic spend, and dedup keys make a
+full shelf a near no-op on the next run.
+
+**It still never posts anything for you.** Same hard boundary as the rest of Radar — it
+stocks the shelf; you pick and post. Details and tuning in
+[`docs/content-system.md`](docs/content-system.md).
 
 ---
 

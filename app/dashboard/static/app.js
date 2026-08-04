@@ -7,7 +7,7 @@ function fmtDate(iso){if(!iso)return"";const d=new Date(iso);if(isNaN(d))return"
   const abs=d.toLocaleDateString(undefined,{month:"short",day:"numeric"});
   const rel=days<=0?"today":days===1?"1d ago":days+"d ago";
   return `${abs} · ${rel}`;}
-const LABEL={priority:"Feed",community:"Community",sales:"Sales",tiktok:"TikTok",content:"Content",personal:"Personal",email:"Email",handled:"Handled"};
+const LABEL={priority:"Feed",community:"Community",sales:"Sales",tiktok:"TikTok",content:"Content",studio:"Studio",personal:"Personal",email:"Email",handled:"Handled"};
 let tab="priority", sub="all", sortMode="newest";
 
 function avatarClass(cat){
@@ -59,8 +59,9 @@ function salesCard(s){
 async function render(){
   const feed=$("#feed");feed.innerHTML='<div class="empty">Loading…</div>';
   $("#subfilter").classList.toggle("on",tab==="email");
-  $("#sortbar").style.display=(tab==="plan")?"none":"";
+  $("#sortbar").style.display=(tab==="plan"||tab==="studio")?"none":"";
   if(tab==="plan")return renderPlan();
+  if(tab==="studio")return renderStudio();
   const q="&sort="+sortMode;
   if(tab==="sales"){
     const [{items:sitems},{sales}]=await Promise.all([api("/items?tab=sales"+q),api("/sales")]);
@@ -86,7 +87,15 @@ async function render(){
 async function renderPlan(){
   const feed=$("#feed");
   const p=await api("/plan");
-  const check=t=>`<label class="todo ${t.done?"done":""}"><input type="checkbox" data-task="${t.id}" ${t.done?"checked":""}><span>${esc(t.label)}</span></label>`;
+  const check=t=>{
+    const c=t.content;
+    const ready=c?`<div class="sched" data-piece="${c.id}" style="margin:2px 0 8px 26px;gap:8px">
+        <span style="flex:1;font-size:13px">📝 ${esc(c.title||"(queued draft)")}</span>
+        <span class="draft-text" style="display:none">${esc(c.body||"")}</span>
+        <button class="act primary" data-copy>⧉ Copy</button>
+        <button class="act" data-cstatus="posted">✓ Posted</button></div>`:"";
+    return `<label class="todo ${t.done?"done":""}"><input type="checkbox" data-task="${t.id}" ${t.done?"checked":""}><span>${esc(t.label)}</span></label>${ready}`;
+  };
   let h=`<div class="planhdr"><h2>Today · ${esc(p.day)}</h2><div class="sub" style="color:var(--muted);font-size:13px">Content targets reset daily · calendar events blended in by time</div></div>`;
   if(p.schedule&&p.schedule.length)
     h+=`<div class="planblock"><h3>📅 Schedule</h3>`+p.schedule.map(e=>
@@ -97,6 +106,73 @@ async function renderPlan(){
     h+=`<div class="planblock"><h3>${esc(qk.label)}<span class="prog">${qk.done}/${qk.total} done</span></h3>`+qk.tasks.map(check).join("")+`</div>`;});
   if(p.todos&&p.todos.length)
     h+=`<div class="planblock"><h3>✓ To-do</h3>`+p.todos.map(check).join("")+`</div>`;
+  feed.innerHTML=h;
+}
+
+const CHAN={skool:"◎ Skool",tiktok:"♪ TikTok",substack:"✎ Substack",youtube:"▶ YouTube"};
+function pieceCard(p,isAnswer){
+  const conf=p.confidence||"low";
+  const glyph=isAnswer?"💬":"📢";
+  const meta=isAnswer?"answer":(CHAN[p.channel]||p.channel);
+  const reason=p.review_reason?`<div style="padding:0 13px 10px;font-size:11px;color:var(--faint)">${esc(p.review_reason)}</div>`:"";
+  const hook=(!isAnswer&&p.hook&&p.body&&!p.body.startsWith(p.hook))?`<div class="content" style="font-weight:600">${esc(p.hook)}</div>`:"";
+  const cta=(!isAnswer&&p.cta)?`<div style="padding:2px 13px 10px;font-size:12px;color:var(--muted)">↳ ${esc(p.cta)}</div>`:"";
+  return `<article class="card" data-piece="${p.id}">
+    <div class="card-top"><div class="avatar content">${glyph}</div>
+      <div class="who"><div class="name">${esc(p.title||"(untitled)")}</div>
+        <div class="sub"><span class="chip content">${esc(meta)}</span> · <span class="conf ${conf}">${conf}</span></div></div>
+      <span class="pill today">${esc(p.status||"queued")}</span></div>
+    ${hook}
+    <div class="draft"><div class="draft-head"><span class="draft-label">${isAnswer?"Canonical answer — edit before posting":"Copy-ready post — edit before posting"}</span></div>
+      <div class="draft-text" contenteditable="true" spellcheck="false">${esc(p.body||"")}</div>${reason}</div>
+    ${cta}
+    <div class="actions">
+      <button class="act primary" data-copy>⧉ Copy</button>
+      <button class="act" data-cstatus="posted">✓ Posted</button>
+      <button class="act ghost" data-cstatus="discarded">✕ Discard</button></div>
+  </article>`;
+}
+function oppCard(o){
+  return `<article class="card" data-opp="${o.id}">
+    <div class="card-top"><div class="avatar">❓</div>
+      <div class="who"><div class="name">${esc(o.question)}</div>
+        <div class="sub"><span class="chip">asked ${o.occurrences}×</span></div></div></div>
+    <div class="actions"><button class="act primary" data-answer="${o.id}">✨ Draft answer</button>
+      <button class="act ghost" data-dismiss="${o.id}">✕ Dismiss</button></div>
+  </article>`;
+}
+
+async function renderStudio(){
+  const feed=$("#feed");feed.innerHTML='<div class="empty">Loading the shelf…</div>';
+  const d=await api("/content/studio");
+  const st=d.stats||{open_by_channel:{},open_total:0,posted_total:0};
+  const chips=Object.keys(CHAN).map(c=>`<span class="chip">${esc(CHAN[c])}: ${st.open_by_channel[c]||0}</span>`).join(" ");
+  let h=`<div class="rec" id="studio-head"><h4>✎ Content Studio — your stocked shelf</h4>
+    <div style="font-size:13px;color:var(--muted)">${st.open_total} ready to post · ${st.posted_total} posted. Generated in your voice, grounded only in your own content. Nothing posts automatically — you copy and post.</div>
+    <div class="freerow" style="margin-top:8px">${chips}</div>
+    <div class="actions" style="margin-top:8px;flex-wrap:wrap;gap:6px">
+      <input id="seed-input" placeholder="optional topic seed…" style="flex:1;min-width:160px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)"/>
+      <button class="act primary" data-gen="skool">Generate Skool</button>
+      <button class="act" data-gen="tiktok">TikTok</button>
+      <button class="act" data-gen="substack">Substack</button>
+      <button class="act" data-gen="__all">↻ Top up all</button></div></div>`;
+
+  const posts=d.posts||{};
+  const anyPosts=Object.values(posts).some(a=>a&&a.length);
+  h+=`<div class="planblock"><h3>📢 Post queue</h3>`;
+  if(anyPosts){
+    Object.keys(CHAN).forEach(c=>{const list=posts[c]||[];if(!list.length)return;
+      h+=`<div style="margin:6px 0 2px;font-size:12px;color:var(--muted)">${esc(CHAN[c])} · ${list.length}</div>`+list.map(p=>pieceCard(p,false)).join("");});
+  }else h+=`<div class="empty">Queue is empty. Hit “Top up all” (needs your API key + imported content), or the 45-min cycle fills it automatically.</div>`;
+  h+=`</div>`;
+
+  const answers=d.answers||[];
+  h+=`<div class="planblock"><h3>💬 Answer bank</h3>`;
+  h+=answers.length?answers.map(p=>pieceCard(p,true)).join(""):`<div class="empty">No canonical answers yet — draft one from a recurring question below.</div>`;
+  h+=`</div>`;
+
+  const opps=(d.opportunities||[]).filter(o=>o.status==="open"&&!o.answer_piece_id);
+  if(opps.length){h+=`<div class="planblock"><h3>❓ Recurring questions (no answer yet)</h3>`+opps.map(oppCard).join("")+`</div>`;}
   feed.innerHTML=h;
 }
 
@@ -141,7 +217,40 @@ $("#subfilter").addEventListener("click",e=>{const b=e.target.closest(".seg");if
 $("#sortbar").addEventListener("click",e=>{const b=e.target.closest(".seg");if(!b)return;
   sortMode=b.dataset.sort;$$("#sortbar .seg").forEach(x=>x.setAttribute("aria-selected",x===b));render();});
 
+async function studioGenerate(channel){
+  const seed=($("#seed-input")&&$("#seed-input").value.trim())||"";
+  toast("Generating…");
+  const body=channel==="__all"?{}:{channel,seed};
+  const r=await api("/content/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const n=r.created!=null?r.created:(r.answers_created||0)+Object.values(r.posts_created||{}).reduce((a,b)=>a+b,0);
+  toast(n?`Added ${n} to the shelf`:(r.reason||"Nothing generated — check API key / imported content"));
+  renderStudio();refreshChrome();
+}
+
 $("#feed").addEventListener("click",async e=>{
+  // Studio: generate buttons (live in the header, not a card)
+  const gen=e.target.closest("[data-gen]");
+  if(gen){return studioGenerate(gen.dataset.gen);}
+  // Studio: a recurring-question card → draft/dismiss
+  const oppCardEl=e.target.closest("[data-opp]");
+  if(oppCardEl){
+    const ans=e.target.closest("[data-answer]"),dis=e.target.closest("[data-dismiss]");
+    if(ans){toast("Drafting answer…");await api("/content/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({opportunity_id:+ans.dataset.answer})});renderStudio();refreshChrome();return;}
+    if(dis){await api(`/content/opportunity/${dis.dataset.dismiss}/dismiss`,{method:"POST"});oppCardEl.classList.add("gone");setTimeout(()=>oppCardEl.remove(),300);toast("Dismissed");return;}
+    return;
+  }
+  // Studio: a queued post/answer card → copy / posted / discard
+  const pcard=e.target.closest("[data-piece]");
+  if(pcard){
+    const pid=pcard.dataset.piece,dt=$(".draft-text",pcard);
+    if(e.target.closest("[data-copy]")){dt&&navigator.clipboard&&navigator.clipboard.writeText(dt.textContent.trim());toast("Copied — paste it into Skool");return;}
+    const st=e.target.closest("[data-cstatus]");
+    if(st){const status=st.dataset.cstatus;
+      await api(`/content/piece/${pid}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status,edited_text:dt?dt.textContent.trim():null})});
+      pcard.classList.add("gone");setTimeout(()=>{pcard.remove();refreshChrome();},300);
+      toast(status==="posted"?"Marked posted ✓ (learned your edits)":"Removed from shelf");return;}
+    return;
+  }
   const card=e.target.closest(".card");if(!card)return;const id=card.dataset.id;
   if(e.target.closest("[data-copy]")){const d=$(".draft-text",card)||$(".content",card);
     navigator.clipboard&&navigator.clipboard.writeText(d.textContent.trim());

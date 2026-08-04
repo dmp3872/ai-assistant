@@ -85,7 +85,7 @@ def recommend_post() -> dict | None:
         resp = _client().messages.create(model=_settings.claude_model, max_tokens=500,
                                           system=system, messages=[{"role": "user", "content": user}])
         data = _parse_json(resp.content[0].text)
-        audit("draft", kind="content_recommendation", title=data.get("title"))
+        audit("draft", subtype="content_recommendation", title=data.get("title"))
         return data
     except Exception as exc:
         audit("error", stage="recommend_post", error=str(exc))

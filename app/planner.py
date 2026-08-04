@@ -84,6 +84,16 @@ def free_slots(schedule: list[dict]) -> list[str]:
     return slots
 
 
+def _content_for(kind: str, day: str, count: int) -> list[dict]:
+    """Ready-to-post pieces from the content queue backing this channel's quota, so a
+    quota slot shows a real draft to copy — not just 'write a post'. Never raises."""
+    try:
+        from app.content import queue
+        return queue.pull_for_day(kind, day, count)
+    except Exception:
+        return []
+
+
 def plan(day: str) -> dict:
     ensure_day(day)
     with get_session() as s:
@@ -92,8 +102,13 @@ def plan(day: str) -> dict:
         for kind, count, label in QUOTAS:
             tasks = [{"id": t.id, "label": t.label, "done": t.done}
                      for t in rows if t.kind == kind]
+            # Zip each quota slot with a queued piece (if the shelf has one for it).
+            pieces = _content_for(kind, day, len(tasks))
+            for i, t in enumerate(tasks):
+                t["content"] = pieces[i] if i < len(pieces) else None
             quotas.append({"kind": kind, "label": label, "total": count,
-                           "done": sum(1 for t in tasks if t["done"]), "tasks": tasks})
+                           "done": sum(1 for t in tasks if t["done"]),
+                           "ready": len(pieces), "tasks": tasks})
         todos = [{"id": t.id, "label": t.label, "done": t.done}
                  for t in rows if t.kind == "todo"]
     schedule = day_schedule(day)

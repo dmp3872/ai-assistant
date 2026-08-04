@@ -23,11 +23,36 @@ _engine = create_engine(
 _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False, class_=Session)
 
 
+# New columns added to pre-existing tables. create_all() creates missing TABLES but
+# never ALTERs an existing one, so additive columns need a tiny idempotent migration.
+# (table, column, DDL type) — safe to run every startup; already-present columns skip.
+_ADDED_COLUMNS = [
+    ("content_opportunities", "norm_key", "VARCHAR(120)"),
+    ("content_opportunities", "status", "VARCHAR(16) DEFAULT 'open'"),
+    ("content_opportunities", "answer_piece_id", "INTEGER"),
+]
+
+
+def _ensure_columns() -> None:
+    from sqlalchemy import inspect, text
+
+    insp = inspect(_engine)
+    existing_tables = set(insp.get_table_names())
+    with _engine.begin() as conn:
+        for table, column, ddl in _ADDED_COLUMNS:
+            if table not in existing_tables:
+                continue  # create_all just made it fresh, with the column already
+            cols = {c["name"] for c in insp.get_columns(table)}
+            if column not in cols:
+                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {column} {ddl}'))
+
+
 def init_db() -> None:
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist, then apply additive column migrations."""
     from app.db.models import Base  # local import to avoid cycles
 
     Base.metadata.create_all(_engine)
+    _ensure_columns()
 
 
 @contextmanager

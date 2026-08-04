@@ -127,6 +127,12 @@ def summary():
     planner.ensure_day(today)
     with get_session() as s2:
         counts["plan"] = s2.query(DailyTask).filter_by(day=today, done=False).count()
+    try:
+        from app.content import queue as content_queue
+        counts["studio"] = content_queue.stats()["open_total"]
+    except Exception:
+        counts["studio"] = 0
+    with get_session() as s:
         connectors = [
             {"name": c.name, "status": c.status,
              "last_success": c.last_success_at.isoformat() if c.last_success_at else None}
@@ -249,6 +255,99 @@ def content_recommendation():
     from app.drafting.claude_drafter import recommend_post
     rec = recommend_post()
     return {"recommendation": rec}
+
+
+# --- Studio: the content queue + answer bank --------------------------------------
+
+@router.get("/content/studio")
+def content_studio():
+    """Everything the Studio tab renders: queue stats, the post queue grouped by
+    channel, and the Answer Bank (recurring questions + their canonical answers)."""
+    from app.content import queue, opportunities
+    channels = ["skool", "tiktok", "substack", "youtube"]
+    posts = {c: [p for p in queue.list_pieces(channel=c, status="open")
+                 if p["kind"] != "answer"] for c in channels}
+    answers = queue.list_pieces(kind="answer", status="open")
+    return {"stats": queue.stats(), "posts": posts, "answers": answers,
+            "opportunities": opportunities.open_opportunities(limit=100)}
+
+
+@router.get("/content/queue")
+def content_queue(channel: str | None = None, status: str = "open",
+                  kind: str | None = None):
+    from app.content import queue
+    return {"pieces": queue.list_pieces(channel=channel, status=status, kind=kind)}
+
+
+@router.post("/content/piece/{piece_id}/status")
+def content_piece_status(piece_id: int, payload: dict = Body(default={})):
+    """Move a piece through queued→approved→posted (or discard). 'posted' can carry the
+    text you actually posted for style learning."""
+    from app.content import queue
+    status = (payload.get("status") or "").strip()
+    ok = queue.set_status(piece_id, status, edited_text=payload.get("edited_text"))
+    return {"ok": ok}
+
+
+@router.post("/content/piece/{piece_id}/edit")
+def content_piece_edit(piece_id: int, payload: dict = Body(default={})):
+    from app.content import queue
+    ok = queue.update_body(piece_id, title=payload.get("title"),
+                           body=payload.get("body"))
+    return {"ok": ok}
+
+
+@router.post("/content/generate")
+def content_generate(payload: dict = Body(default={})):
+    """On-demand generation. With {channel, seed} it drafts one post from that seed;
+    otherwise it runs a bounded replenish to top the shelf up. Uses the API."""
+    from app.content import engine, generator, opportunities, queue
+    opp_id = payload.get("opportunity_id")
+    if opp_id:
+        opp = next((o for o in opportunities.open_opportunities()
+                    if o["id"] == int(opp_id)), None)
+        if not opp:
+            return {"created": 0, "reason": "opportunity not found"}
+        ans = generator.generate_answer(opp["question"])
+        if not ans:
+            return {"created": 0, "reason": "no API key or no answer produced"}
+        pid = queue.add_piece({
+            "channel": "skool", "kind": "answer", "origin": "opportunity",
+            "opportunity_id": opp["id"], "origin_ref": str(opp["id"]),
+            "title": ans["title"], "body": ans["body"], "confidence": ans["confidence"],
+            "review_reason": ans["review_reason"], "sources_used": ans["sources_used"],
+            "model": ans["model"], "dedupe_key": f"answer:{opp['id']}"})
+        if pid:
+            opportunities.mark_answered(opp["id"], pid)
+        return {"created": 1 if pid else 0, "piece_id": pid}
+    seed = (payload.get("seed") or "").strip()
+    channel = (payload.get("channel") or "skool").strip()
+    if seed:
+        post = generator.generate_post(channel, seed)
+        if not post:
+            return {"created": 0, "reason": "no grounding content or no API key"}
+        avoid = [p["title"] for p in queue.list_pieces(channel=channel, status="open")
+                 if p.get("title")]
+        pid = queue.add_piece({
+            "channel": channel, "kind": "post", "origin": "manual",
+            "title": post["title"], "hook": post["hook"], "body": post["body"],
+            "cta": post["cta"], "angle": post["angle"], "tags": post["tags"],
+            "confidence": post["confidence"], "review_reason": post["review_reason"],
+            "sources_used": post["sources_used"], "model": post["model"]})
+        return {"created": 1 if pid else 0, "piece_id": pid}
+    return engine.replenish()
+
+
+@router.get("/content/opportunities")
+def content_opportunities():
+    from app.content import opportunities
+    return {"opportunities": opportunities.open_opportunities(limit=200)}
+
+
+@router.post("/content/opportunity/{opp_id}/dismiss")
+def content_opportunity_dismiss(opp_id: int):
+    from app.content import opportunities
+    return {"ok": opportunities.dismiss(opp_id)}
 
 
 @router.post("/run")

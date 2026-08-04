@@ -89,6 +89,30 @@ drafting:
   max_context_snippets: 6
   max_snippet_chars: 800
 
+content:
+  # The content engine: keeps a stocked shelf of copy-ready posts + canonical answers
+  # so you always have something to reply with and something to post. NOTHING is ever
+  # posted for you — pieces queue in the Studio tab for one-tap copy. Grounded ONLY in
+  # your own imported content (classroom, past posts) via the public retrieval namespaces.
+  enabled: true
+  # Keep each channel's queue topped up to this many unposted pieces.
+  queue_targets:
+    skool: 10
+    tiktok: 6
+    substack: 3
+    youtube: 1
+  # Per-cycle generation caps (protect your Anthropic spend; the shelf fills over a few
+  # cycles rather than all at once). A full shelf makes the next cycle a near no-op.
+  max_posts_per_cycle: 5
+  max_answers_per_cycle: 3
+  # A community question becomes an Answer-Bank entry once asked this many times. 1 =
+  # every distinct question gets a ready answer (best for "always have a reply").
+  min_question_occurrences: 1
+  # Optional evergreen topic seeds to guarantee posts even before questions accumulate.
+  seed_topics: []
+    # - "How to read a third-party COA"
+    # - "Reconstitution basics for research peptides"
+
 retrieval:
   db_path: "./data/lancedb"
   # namespaces that may inform a PUBLIC (community) draft — personal/financial excluded
