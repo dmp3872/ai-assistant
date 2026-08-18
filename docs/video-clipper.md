@@ -51,7 +51,8 @@ python scripts/clip_video.py talk.mp4 --dry-run
 python scripts/clip_video.py talk.mp4 --min 4 --max 8 --target 6
 python scripts/clip_video.py talk.mp4 --model small     # better transcription, slower
 python scripts/clip_video.py talk.mp4 --fast            # stream-copy: near-instant, less precise
-python scripts/clip_video.py talk.mp4 --outdir ~/clips --no-titles
+python scripts/clip_video.py talk.mp4 --outdir ~/clips
+python scripts/clip_video.py talk.mp4 --titles          # opt in to AI titles (off by default)
 
 # stock the Studio queue while you clip
 python scripts/clip_video.py talk.mp4 --queue           # each clip -> a YouTube piece
@@ -87,9 +88,11 @@ to see the plan.
 - **Non-destructive.** The source is only ever read; clips are written to a new folder.
 - **Accurate by default.** Clips are re-encoded so they start exactly on the planned frame.
   `--fast` stream-copies instead (near-instant, but may start on the nearest keyframe).
-- **Titling is best-effort.** With your Anthropic key set, one batched Claude call names
-  each clip from its transcript (fenced as untrusted data). No key / no network → clips
-  are still cut, just numbered.
+- **No AI by default.** Nothing writes hooks, titles, or captions — a clip is just a
+  naturally-cut segment. Clips are numbered (`clip_01`, `clip_02`, …) and the transcript
+  travels with each clip in the manifest. AI titling is strictly opt-in via `--titles`
+  (a batched Claude call over each clip's transcript). Transcription itself uses Whisper
+  (speech-to-text), which runs regardless.
 - **Deterministic core.** Segmentation has no ML and no randomness, so the same transcript
   always yields the same clip plan — easy to trust and to test (`tests/test_video_segment.py`).
 

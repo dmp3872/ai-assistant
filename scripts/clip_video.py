@@ -9,8 +9,9 @@ Point it at a video and walk away:
 
 It transcribes the audio (Whisper), scans the transcript for natural break points near
 the 6-minute mark (sentence ends, pauses, topic shifts), and cuts clips there with
-ffmpeg. It never modifies the original. Titles are added automatically when your
-Anthropic key is set. Nothing is posted anywhere — clips land in a folder for you.
+ffmpeg. It never modifies the original. No AI writes hooks, titles, or captions — a clip
+is just a naturally-cut segment (pass --titles if you ever want AI titles). Nothing is
+posted anywhere — clips land in a folder for you.
 
 Runtime needs (on your Mac): ffmpeg (`brew install ffmpeg`) and a Whisper backend
 (`pip install faster-whisper`) — unless you pass a transcript with --transcript.
@@ -46,7 +47,8 @@ def main() -> int:
     ap.add_argument("--model", default=c.get("whisper_model", "base"), help="Whisper model size")
     ap.add_argument("--language", default=c.get("language"), help="force transcription language")
     ap.add_argument("--fast", action="store_true", help="stream-copy (no re-encode); faster, less precise")
-    ap.add_argument("--no-titles", action="store_true", help="skip Claude auto-titling")
+    ap.add_argument("--titles", action="store_true",
+                    help="opt in to AI-generated clip titles (off by default; no AI otherwise)")
     ap.add_argument("--dry-run", action="store_true", help="print the clip plan; cut nothing")
     ap.add_argument("--json", action="store_true", help="emit the plan as JSON to stdout")
     ap.add_argument("--queue", nargs="?", const=c.get("queue_channel", "youtube"),
@@ -82,9 +84,9 @@ def main() -> int:
         return 3
     print(f"• Found {len(clips)} clip points.")
 
-    # 3) Titles (best-effort) -----------------------------------------------------
-    if not args.no_titles and not args.dry_run:
-        print("• Titling clips…")
+    # 3) Titles — OFF by default; AI only if you explicitly opt in with --titles -----
+    if args.titles and not args.dry_run:
+        print("• Titling clips with AI (--titles)…")
         from app.video.titles import suggest_titles
         suggest_titles(clips)
 

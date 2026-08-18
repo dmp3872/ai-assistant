@@ -98,10 +98,10 @@ python scripts/clip_video.py ~/Desktop/podcast.mp4
 
 It transcribes the audio (Whisper), scans the transcript for natural break points near the
 6-minute mark (sentence ends, pauses, topic shifts), and cuts clips there with ffmpeg —
-never mid-sentence, never touching the original. Clips are auto-titled (when your API key
-is set) and land in a folder with a `clips.json` manifest. Needs `ffmpeg` and a Whisper
-backend on your Mac (or pass a transcript with `--transcript`). Full guide:
-[`docs/video-clipper.md`](docs/video-clipper.md).
+never mid-sentence, never touching the original. No AI writes hooks or captions; a clip is
+just a naturally-cut segment (AI titles are opt-in via `--titles`). Clips land in a folder
+with a `clips.json` manifest. Needs `ffmpeg` and a Whisper backend on your Mac (or pass a
+transcript with `--transcript`). Full guide: [`docs/video-clipper.md`](docs/video-clipper.md).
 
 ---
 
