@@ -18,6 +18,7 @@ from pathlib import Path
 
 from app.video import clip as clipmod
 from app.video import transcribe
+from app.video.moments import find_moments
 from app.video.segment import segment_transcript
 
 # Where clips are written. Override with CLIPPER_OUT; defaults to ./clipper_output.
@@ -89,12 +90,19 @@ def _run(job_id: str) -> None:
         if not segments:
             raise RuntimeError("Empty transcript — nothing to clip.")
 
-        # 2) Find natural cut points ---------------------------------------------
-        _set(job_id, status="segmenting", stage="Finding natural cut points…",
-             progress=0.68)
-        clips = segment_transcript(
-            segments, min_s=opts["min"] * 60, max_s=opts["max"] * 60,
-            target_s=opts["target"] * 60)
+        # 2) Find the clips -------------------------------------------------------
+        if opts.get("mode", "highlights") == "even":
+            _set(job_id, status="segmenting", stage="Cutting even chunks…", progress=0.68)
+            clips = segment_transcript(
+                segments, min_s=opts["min"] * 60, max_s=opts["max"] * 60,
+                target_s=opts["target"] * 60)
+        else:
+            _set(job_id, status="segmenting",
+                 stage="Scanning the transcript for engaging moments…", progress=0.68)
+            clips = find_moments(
+                segments, min_s=opts.get("min_moment_s", 45),
+                max_s=opts["max"] * 60, target_s=opts["target"] * 60,
+                max_moments=opts.get("max_moments"))
         if not clips:
             raise RuntimeError("Could not form any clips from this transcript.")
         _set(job_id, est_clips=len(clips))

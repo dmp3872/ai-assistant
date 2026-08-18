@@ -26,16 +26,23 @@ def home() -> str:
     return _PAGE
 
 
-def _opts(min_: float, max_: float, target: float, model: str, fast: bool) -> dict:
-    return {"min": float(min_), "max": float(max_), "target": float(target),
-            "model": model or "base", "fast": bool(fast)}
+def _opts(mode: str, max_: float, target: float, model: str, fast: bool,
+          max_moments) -> dict:
+    mm = None
+    try:
+        mm = int(max_moments) if max_moments not in (None, "", "0", 0) else None
+    except (TypeError, ValueError):
+        mm = None
+    return {"mode": "even" if mode == "even" else "highlights",
+            "min": 5.0, "max": float(max_), "target": float(target),
+            "model": model or "base", "fast": bool(fast), "max_moments": mm}
 
 
 @app.post("/upload")
 async def upload(
     file: UploadFile = File(...),
-    min: float = Form(5.0), max: float = Form(7.0), target: float = Form(6.0),
-    model: str = Form("base"), fast: bool = Form(False),
+    mode: str = Form("highlights"), max: float = Form(8.0), target: float = Form(3.0),
+    model: str = Form("base"), fast: bool = Form(False), max_moments: str = Form(""),
 ):
     """Drag-drop entry: stream the video to a temp file on THIS machine, start a job."""
     jobs.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -44,7 +51,8 @@ async def upload(
     with dest.open("wb") as out:
         while chunk := await file.read(1024 * 1024):
             out.write(chunk)
-    return {"job_id": jobs.create_job(str(dest), safe, _opts(min, max, target, model, fast))}
+    opts = _opts(mode, max, target, model, fast, max_moments)
+    return {"job_id": jobs.create_job(str(dest), safe, opts)}
 
 
 @app.post("/jobs")
@@ -54,9 +62,9 @@ def start(payload: dict = Body(...)):
     p = Path(raw).expanduser() if raw else None
     if not p or not p.exists():
         return {"error": f"File not found: {raw or '(empty)'}"}
-    opts = _opts(payload.get("min", 5.0), payload.get("max", 7.0),
-                 payload.get("target", 6.0), payload.get("model", "base"),
-                 payload.get("fast", False))
+    opts = _opts(payload.get("mode", "highlights"), payload.get("max", 8.0),
+                 payload.get("target", 3.0), payload.get("model", "base"),
+                 payload.get("fast", False), payload.get("max_moments"))
     return {"job_id": jobs.create_job(str(p), p.name, opts,
                                       transcript=payload.get("transcript"))}
 

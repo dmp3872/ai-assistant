@@ -37,6 +37,7 @@
   .pbar>span{display:block;height:100%;width:0;background:var(--accent);border-radius:6px;transition:width .4s ease}
   .clip{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
   .clip h3{margin:0 0 4px;font-size:15px}
+  .clip .score{display:inline-block;font-size:12px;font-weight:700;color:var(--accent);margin-right:7px}
   .clip .meta{font-size:12px;color:var(--muted);margin-bottom:8px}
   .clip .meta .why{color:var(--faint)}
   video{width:100%;max-height:260px;background:#000;border-radius:10px;margin:4px 0 8px}
@@ -51,9 +52,9 @@
 <body>
 <div class="wrap">
   <header><div class="logo">🎬</div><div><h1>Video Clipper</h1></div></header>
-  <div class="sub">Drop a long video → get natural 5–7 minute clips. It reads the transcript, finds
-    good places to cut (sentence ends, pauses, topic changes), and cuts the files — all on your
-    machine. Nothing is uploaded to the cloud.</div>
+  <div class="sub">Drop a long video → it reads the transcript, finds the <b>engaging moments</b>
+    (hooks, stories, questions, strong takes) and clips just those — skipping the boring parts.
+    All on your machine; nothing is uploaded to the cloud.</div>
 
   <div id="dropzone" class="dropzone">
     <div class="dz-big">⤓ Drop a video here</div>
@@ -66,12 +67,17 @@
   </div>
 
   <div class="opts">
-    <label>Clip length
-      <select id="len">
-        <option value="standard">Standard · 5–7 min</option>
-        <option value="short">Short · 3–4 min (more clips)</option>
-        <option value="bite">Bite-size · 1–2 min (most clips)</option>
-        <option value="long">Long · 8–10 min</option>
+    <label>Find
+      <select id="mode">
+        <option value="highlights">Engaging moments (recommended)</option>
+        <option value="even">Even 5–7 min chunks</option>
+      </select></label>
+    <label>How many
+      <select id="maxm">
+        <option value="">Auto (only the good ones)</option>
+        <option value="5">Up to 5</option>
+        <option value="10">Up to 10</option>
+        <option value="20">Up to 20</option>
       </select></label>
     <label>Quality
       <select id="model">
@@ -94,11 +100,12 @@
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const LEN={standard:[5,7,6],short:[3,4.5,3.5],bite:[1,2,1.5],long:[8,10,9]};
+// highlights: variable-length moments (max 8 min, aim ~3); even: uniform 5–7 min
+const MAXES={highlights:[8,3],even:[7,6]};
 let poll=null;
 
-function opts(){const[mn,mx,tg]=LEN[$("#len").value]||LEN.standard;
-  return{min:mn,max:mx,target:tg,model:$("#model").value,fast:$("#fast").value};}
+function opts(){const mode=$("#mode").value;const[mx,tg]=MAXES[mode]||MAXES.highlights;
+  return{mode,max:mx,target:tg,model:$("#model").value,fast:$("#fast").value,max_moments:$("#maxm").value};}
 
 const dz=$("#dropzone");
 dz.onclick=()=>$("#file").click();
@@ -115,8 +122,9 @@ function setStatus(text,frac){
 
 function upload(file){
   const o=opts(),fd=new FormData();
-  fd.append("file",file);fd.append("min",o.min);fd.append("max",o.max);
+  fd.append("file",file);fd.append("mode",o.mode);fd.append("max",o.max);
   fd.append("target",o.target);fd.append("model",o.model);fd.append("fast",o.fast);
+  fd.append("max_moments",o.max_moments);
   setStatus(`Uploading “${esc(file.name)}” (${(file.size/1e6).toFixed(0)} MB)…`,0.01);
   $("#results").innerHTML="";
   const xhr=new XMLHttpRequest();xhr.open("POST","/upload");
@@ -152,14 +160,15 @@ function render(j){
   let h="";
   if(planOnly)h+=`<div class="panel note">🛠 ffmpeg isn’t installed, so these are the planned cuts only.
     Install it (<b>brew install ffmpeg</b>) and run again to get the files.</div>`;
-  h+=`<div class="panel"><b>${clips.length} clips${planOnly?" (planned)":""}</b>
+  h+=`<div class="panel"><b>${clips.length} clippable moment${clips.length===1?"":"s"}${planOnly?" (planned)":""}</b>
     ${j.out_dir?`<div style="font-size:12px;color:var(--muted);margin-top:4px">Saved to ${esc(j.out_dir)}</div>`:""}</div>`;
   h+=clips.map(c=>{
     const mins=(c.duration/60).toFixed(1);
     const vid=c.file_url?`<video src="${esc(c.file_url)}" controls preload="none"></video>`:"";
     const dl=c.file_url?`<a class="btn" href="${esc(c.file_url)}" download>⤓ Download</a>`:"";
     const err=c.error?`<div class="err" style="font-size:11px">${esc(c.error)}</div>`:"";
-    return `<div class="clip"><h3>${esc(c.title||("Clip "+(c.index+1)))}</h3>
+    const badge=(c.score!=null)?`<span class="score">🔥 ${(+c.score).toFixed(1)}</span>`:"";
+    return `<div class="clip"><h3>${badge}${esc(c.title||("Clip "+(c.index+1)))}</h3>
       <div class="meta">${esc(c.start_hms)} → ${esc(c.end_hms)} · ${mins} min · <span class="why">${esc(c.reason)}</span></div>
       ${vid}${err}<div class="txt">${esc((c.text||"").slice(0,240))}</div>
       <div class="acts">${dl}</div></div>`;

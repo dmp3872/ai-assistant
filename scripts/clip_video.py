@@ -37,13 +37,20 @@ def _cfg() -> dict:
 
 def main() -> int:
     c = _cfg()
-    ap = argparse.ArgumentParser(description="Auto-clip a long video into 5–7 min segments.")
+    ap = argparse.ArgumentParser(
+        description="Find the engaging moments in a long video and clip just those.")
     ap.add_argument("source", help="video/audio file, or a transcript (.srt/.vtt/.json)")
     ap.add_argument("--transcript", help="existing transcript file (skips transcription)")
     ap.add_argument("--outdir", help="output folder (default: <source>_clips)")
-    ap.add_argument("--min", type=float, default=c.get("min_minutes", 5.0), help="min clip minutes")
-    ap.add_argument("--max", type=float, default=c.get("max_minutes", 7.0), help="max clip minutes")
-    ap.add_argument("--target", type=float, default=c.get("target_minutes", 6.0), help="ideal clip minutes")
+    ap.add_argument("--even", action="store_true",
+                    help="even 5–7 min chunks instead of picking engaging moments")
+    ap.add_argument("--max-clips", type=int, default=None,
+                    help="cap the number of moments (default: only the good ones)")
+    ap.add_argument("--min", type=float, default=c.get("min_minutes", 5.0),
+                    help="min clip minutes (even mode)")
+    ap.add_argument("--max", type=float, default=c.get("max_minutes", 8.0), help="max clip minutes")
+    ap.add_argument("--target", type=float, default=c.get("target_minutes", 3.0),
+                    help="ideal clip minutes (moment mode aims here; ~3 is punchy)")
     ap.add_argument("--model", default=c.get("whisper_model", "base"), help="Whisper model size")
     ap.add_argument("--language", default=c.get("language"), help="force transcription language")
     ap.add_argument("--fast", action="store_true", help="stream-copy (no re-encode); faster, less precise")
@@ -72,13 +79,19 @@ def main() -> int:
     print(f"  {len(segments)} transcript segments "
           f"({segments[-1]['end']/60:.1f} min of speech).")
 
-    # 2) Find the clip points -----------------------------------------------------
-    clips = segment_transcript(
-        segments, min_s=args.min * 60, max_s=args.max * 60, target_s=args.target * 60)
+    # 2) Find the clips -----------------------------------------------------------
+    if args.even:
+        clips = segment_transcript(
+            segments, min_s=args.min * 60, max_s=args.max * 60, target_s=args.target * 60)
+        print(f"• {len(clips)} even chunks.")
+    else:
+        from app.video.moments import find_moments
+        clips = find_moments(segments, max_s=args.max * 60, target_s=args.target * 60,
+                             max_moments=args.max_clips)
+        print(f"• Found {len(clips)} engaging moments.")
     if not clips:
         print("✗ Could not form any clips.")
         return 3
-    print(f"• Found {len(clips)} clip points.")
 
     # 3) Titles — OFF by default; AI only if you explicitly opt in with --titles -----
     if args.titles and not args.dry_run:

@@ -51,9 +51,10 @@ class Clip:
     index: int
     start: float
     end: float
-    reason: str          # why we cut here (for the manifest / transparency)
+    reason: str          # why we cut here / why it's engaging (for the manifest)
     text: str            # the transcript spanning this clip
     title: str | None = None
+    score: float | None = None   # engagement score (moment finder); None for even chunks
 
     @property
     def duration(self) -> float:
@@ -69,6 +70,7 @@ class Clip:
             "end_hms": hms(self.end),
             "reason": self.reason,
             "title": self.title,
+            "score": self.score,
             "text": self.text,
         }
 

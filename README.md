@@ -90,19 +90,19 @@ stocks the shelf; you pick and post. Details and tuning in
 
 ## Auto video clipper
 
-A **standalone** tool (not tied to the assistant): get natural **5–7 minute clips** out of a
-long video, no timeline editing. Two ways:
+A **standalone** tool (not tied to the assistant): find the **engaging moments** in a long
+video and clip just those — no timeline editing. Two ways:
 
 - **Drag & drop app:** `python scripts/clipper.py` → opens a page → drop a video → watch it
   clip, then play/download each clip.
 - **CLI:** `python scripts/clip_video.py ~/Desktop/podcast.mp4`
 
-It transcribes the audio (Whisper), scans the transcript for natural break points near the
-6-minute mark (sentence ends, pauses, topic shifts), and cuts clips there with ffmpeg —
-never mid-sentence, never touching the original. No AI writes hooks or captions; a clip is
-just a naturally-cut segment (AI titles are opt-in via `--titles`). Needs `ffmpeg` and a
-Whisper backend on your Mac (or pass a transcript with `--transcript`). Full guide:
-[`docs/video-clipper.md`](docs/video-clipper.md).
+It transcribes the audio (Whisper), detects where topics start/end, scores each for how
+clip-worthy it is (hooks, stories, questions, strong takes, specifics), and cuts **only the
+good ones** — skipping boring stretches, never mid-sentence, never touching the original.
+No AI writes hooks or captions (AI titles are opt-in via `--titles`); `--even` gives uniform
+5–7 min chunks instead. Needs `ffmpeg` and a Whisper backend on your Mac (or pass a
+transcript with `--transcript`). Full guide: [`docs/video-clipper.md`](docs/video-clipper.md).
 
 ---
 

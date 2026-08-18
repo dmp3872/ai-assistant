@@ -1,8 +1,11 @@
 # Auto Video Clipper
 
-Point it at a long video; get natural **5–7 minute clips** back. No timeline scrubbing, no
-manual in/out points. It reads the transcript, finds good places to cut, and hands you
-finished clip files plus a manifest.
+Point it at a long video; it finds the **engaging moments** and clips just those. It reads
+the transcript, detects where topics start and end, scores each one for how clip-worthy it
+is (hooks, stories, questions, strong takes, specifics), and cuts only the good ones —
+skipping the boring stretches. No timeline scrubbing, no every-5-minutes slicing.
+
+(Prefer uniform chunks? `--even` / the "Even 5–7 min chunks" option still does that.)
 
 It's a **standalone app** — nothing else attached. Two ways to run it: a drag-and-drop web
 page, or a one-line CLI. Both run the same engine, entirely on your machine.
@@ -41,6 +44,19 @@ That's the whole workflow. Everything below is detail.
 video ──▶ transcript (Whisper, with timestamps)
             │
             ▼
+      find_moments()  ── hunt for the clippable moments:
+            │             • topic boundaries — where the subject changes (lexical
+            │               cohesion + discourse openers + pauses)
+            │             • engagement score — hook opener, questions, personal story,
+            │               vivid language, concrete specifics; boring stretches score ~0
+            │             • select the best, trim filler off the edges, drop the rest
+            ▼
+      only the engaging moments (variable length, ranked by a 🔥 score)
+```
+
+The `--even` mode instead uses the older uniform slicer:
+
+```
       segment_transcript()  ── scan for natural cut points near the 6-min mark:
             │                    • end of a sentence (never cut mid-sentence)
             │                    • a pause in speech (silence gap)
@@ -109,7 +125,8 @@ to see the plan.
 
 | File | Role |
 |------|------|
-| `app/video/segment.py` | Find natural cut points (the brain; pure, tested) |
+| `app/video/moments.py` | Find engaging moments — topic detection + scoring (default) |
+| `app/video/segment.py` | Even-chunk slicer for `--even` mode (pure, tested) |
 | `app/video/transcribe.py` | Whisper backends + SRT/VTT/JSON transcript parsing |
 | `app/video/clip.py` | ffprobe duration, ffmpeg cutting, dry-run plan, manifest |
 | `app/video/titles.py` | Optional Claude auto-titling (graceful) |
