@@ -88,6 +88,23 @@ stocks the shelf; you pick and post. Details and tuning in
 
 ---
 
+## Auto video clipper
+
+Point it at a long video; get natural **5–7 minute clips** back — no timeline editing:
+
+```bash
+python scripts/clip_video.py ~/Desktop/podcast.mp4
+```
+
+It transcribes the audio (Whisper), scans the transcript for natural break points near the
+6-minute mark (sentence ends, pauses, topic shifts), and cuts clips there with ffmpeg —
+never mid-sentence, never touching the original. Clips are auto-titled (when your API key
+is set) and land in a folder with a `clips.json` manifest. Needs `ffmpeg` and a Whisper
+backend on your Mac (or pass a transcript with `--transcript`). Full guide:
+[`docs/video-clipper.md`](docs/video-clipper.md).
+
+---
+
 ## Quick start (on your Mac)
 
 ```bash

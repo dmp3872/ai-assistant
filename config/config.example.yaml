@@ -113,6 +113,17 @@ content:
     # - "How to read a third-party COA"
     # - "Reconstitution basics for research peptides"
 
+clips:
+  # Auto-clipper defaults (scripts/clip_video.py). Point it at a long video and it cuts
+  # natural 5–7 min segments by scanning the transcript — no manual editing. Overridable
+  # per run with --min/--max/--target/--model/--fast. Needs ffmpeg + a Whisper backend
+  # on the machine that runs it (or pass an existing transcript with --transcript).
+  min_minutes: 5.0
+  max_minutes: 7.0
+  target_minutes: 6.0
+  whisper_model: "base"      # tiny|base|small|medium|large-v3 (bigger = better + slower)
+  language: null             # null = auto-detect
+
 retrieval:
   db_path: "./data/lancedb"
   # namespaces that may inform a PUBLIC (community) draft — personal/financial excluded

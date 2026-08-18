@@ -28,6 +28,13 @@ playwright>=1.45                  # Skool / (later) WhatsApp, TikTok
 beautifulsoup4>=4.12              # HTML sanitization helper
 lxml>=5.2
 
+# --- video auto-clipper (scripts/clip_video.py) ---
+# Runtime deps live OUTSIDE pip: ffmpeg (brew install ffmpeg) does the cutting. For
+# transcription install ONE Whisper backend (optional — skip if you pass --transcript):
+#   pip install faster-whisper      # recommended: fast, CPU-friendly (CTranslate2)
+#   # or: pip install openai-whisper
+# faster-whisper                    # uncomment to install the recommended backend
+
 # --- macOS integration ---
 keyring>=25.2           # macOS Keychain backend
 # pyobjc-framework-* optional for native notifications; we shell out to osascript
