@@ -7,9 +7,12 @@ local EMERGENCY_STOP file.
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, File, Form, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import desc
 
 from app.classifiers import tab_for_category
@@ -351,6 +354,83 @@ def content_opportunities():
 def content_opportunity_dismiss(opp_id: int):
     from app.content import opportunities
     return {"ok": opportunities.dismiss(opp_id)}
+
+
+# --- Clipper: drop a video, get natural 5–7 min clips -----------------------------
+
+def _clip_opts(min_: float, max_: float, target: float, model: str, fast: bool,
+               queue_channel: str | None) -> dict:
+    qc = (queue_channel or "").strip().lower()
+    return {"min": float(min_), "max": float(max_), "target": float(target),
+            "model": model or "base", "fast": bool(fast),
+            "queue_channel": qc if qc in ("youtube", "tiktok", "skool", "substack") else None}
+
+
+@router.post("/clipper/upload")
+async def clipper_upload(
+    file: UploadFile = File(...),
+    min: float = Form(5.0), max: float = Form(7.0), target: float = Form(6.0),
+    model: str = Form("base"), fast: bool = Form(False),
+    queue_channel: str | None = Form(None),
+):
+    """Drag-drop entry point: stream the uploaded video to a temp file on THIS machine,
+    then kick off a background clip job. (localhost upload — the file never leaves your
+    computer.)"""
+    from app.dashboard import clipper
+    clipper.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    safe = Path(file.filename or "video.mp4").name
+    dest = clipper.UPLOADS_DIR / f"{uuid.uuid4().hex[:8]}_{safe}"
+    with dest.open("wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            out.write(chunk)
+    opts = _clip_opts(min, max, target, model, fast, queue_channel)
+    return {"job_id": clipper.create_job(str(dest), safe, opts)}
+
+
+@router.post("/clipper/jobs")
+def clipper_start(payload: dict = Body(...)):
+    """Path entry point (best for very large files — no upload copy): the server reads the
+    video straight from disk. Also accepts an existing transcript to skip transcription."""
+    from app.dashboard import clipper
+    path = (payload.get("path") or "").strip()
+    if not path or not Path(path).expanduser().exists():
+        return {"error": f"File not found: {path or '(empty)'}"}
+    p = Path(path).expanduser()
+    opts = _clip_opts(payload.get("min", 5.0), payload.get("max", 7.0),
+                      payload.get("target", 6.0), payload.get("model", "base"),
+                      payload.get("fast", False), payload.get("queue_channel"))
+    return {"job_id": clipper.create_job(str(p), p.name, opts,
+                                         transcript=payload.get("transcript"))}
+
+
+@router.get("/clipper/jobs")
+def clipper_jobs():
+    from app.dashboard import clipper
+    return {"jobs": clipper.list_jobs()}
+
+
+@router.get("/clipper/jobs/{job_id}")
+def clipper_job(job_id: str):
+    from app.dashboard import clipper
+    return clipper.get_job(job_id) or {"error": "job not found"}
+
+
+@router.post("/clipper/jobs/{job_id}/queue")
+def clipper_queue(job_id: str, payload: dict = Body(default={})):
+    from app.dashboard import clipper
+    channel = (payload.get("channel") or "youtube").strip().lower()
+    return clipper.queue_job(job_id, channel)
+
+
+@router.get("/clipper/file/{job_id}/{name}")
+def clipper_file(job_id: str, name: str):
+    """Serve a cut clip file for play/download. Path-jailed to the job's own folder."""
+    from app.dashboard import clipper
+    base = (clipper.CLIPS_DIR / job_id).resolve()
+    target = (base / name).resolve()
+    if base not in target.parents or not target.exists():
+        return {"error": "not found"}
+    return FileResponse(str(target), filename=name)
 
 
 @router.post("/run")

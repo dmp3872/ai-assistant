@@ -1,6 +1,7 @@
 # --- core ---
 fastapi>=0.111
 uvicorn[standard]>=0.30
+python-multipart>=0.0.9   # dashboard Clipper: drag-drop video upload (localhost)
 pydantic>=2.7
 pydantic-settings>=2.3
 SQLAlchemy>=2.0

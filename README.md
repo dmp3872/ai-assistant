@@ -90,11 +90,11 @@ stocks the shelf; you pick and post. Details and tuning in
 
 ## Auto video clipper
 
-Point it at a long video; get natural **5–7 minute clips** back — no timeline editing:
+Get natural **5–7 minute clips** out of a long video — no timeline editing. Two ways:
 
-```bash
-python scripts/clip_video.py ~/Desktop/podcast.mp4
-```
+- **Drag & drop:** open the dashboard → **Clipper** tab → drop a video → watch it clip,
+  then play/download each clip or send them all to your content queue.
+- **CLI:** `python scripts/clip_video.py ~/Desktop/podcast.mp4`
 
 It transcribes the audio (Whisper), scans the transcript for natural break points near the
 6-minute mark (sentence ends, pauses, topic shifts), and cuts clips there with ffmpeg —

@@ -4,6 +4,32 @@ Point it at a long video; get natural **5–7 minute clips** back. No timeline s
 manual in/out points. It reads the transcript, finds good places to cut, and hands you
 finished clip files plus a manifest.
 
+Two ways to use it — a drag-and-drop web page, or a one-line CLI. Both run the exact same
+engine, entirely on your machine.
+
+## Easiest: the Clipper tab (drag & drop)
+
+Start the dashboard and open it:
+
+```bash
+uvicorn app.main:app --port 4317      # then open http://localhost:4317
+```
+
+Go to the **Clipper** tab and **drop a video onto the page** (or click to choose one, or
+paste a file path for very large files). Pick a clip length and whether to add the clips
+to your content queue, and it runs right there:
+
+- a live progress bar (transcribing → finding cut points → cutting),
+- then each clip with an inline player, a **Download** button, timecodes, and the reason
+  it was cut,
+- and a **Send all to queue** button (YouTube/TikTok) to stock the Studio shelf.
+
+The video is uploaded only to the local app on your own machine (localhost) — nothing goes
+to the cloud. Clip length presets let you dial the count: **Standard 5–7 min**, **Short
+3–4 min**, or **Bite-size 1–2 min** (a 2-hour podcast → 20+ short clips).
+
+## Or the CLI
+
 ```bash
 python scripts/clip_video.py ~/Desktop/podcast.mp4
 ```
@@ -105,4 +131,6 @@ to see the plan.
 | `app/video/clip.py` | ffprobe duration, ffmpeg cutting, dry-run plan, manifest |
 | `app/video/titles.py` | Optional Claude auto-titling (graceful) |
 | `scripts/clip_video.py` | The one-command CLI |
-| `tests/test_video_segment.py` | Cut-point + parser tests |
+| `app/dashboard/clipper.py` | Background job runner for the Clipper tab (progress) |
+| `app/dashboard/routes.py` | `/api/clipper/*` (upload, jobs, file serving) |
+| `tests/test_video_segment.py`, `tests/test_clipper.py` | Cut-point, parser, job tests |

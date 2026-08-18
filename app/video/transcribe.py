@@ -112,25 +112,41 @@ class TranscriptionUnavailable(RuntimeError):
 
 
 def transcribe_media(path: str | Path, *, model_size: str = "base",
-                     language: str | None = None) -> list[dict]:
+                     language: str | None = None, progress=None) -> list[dict]:
     """Transcribe a local media file to [{start,end,text}] using whatever Whisper backend
-    is installed. Prefers faster-whisper (much faster, CPU-friendly)."""
+    is installed. Prefers faster-whisper (much faster, CPU-friendly).
+
+    `progress`, if given, is called with a 0.0–1.0 fraction as transcription advances so a
+    UI can show a live bar (faster-whisper streams segments; we track them against the
+    media duration)."""
     path = str(path)
     try:
         from faster_whisper import WhisperModel  # type: ignore
 
         model = WhisperModel(model_size, device="auto", compute_type="auto")
-        segments, _info = model.transcribe(path, language=language, vad_filter=True)
-        return [{"start": float(s.start), "end": float(s.end), "text": s.text.strip()}
-                for s in segments]
+        segments, info = model.transcribe(path, language=language, vad_filter=True)
+        duration = float(getattr(info, "duration", 0) or 0)
+        out = []
+        for s in segments:
+            out.append({"start": float(s.start), "end": float(s.end),
+                        "text": s.text.strip()})
+            if progress and duration:
+                progress(min(s.end / duration, 0.99))
+        if progress:
+            progress(1.0)
+        return out
     except ImportError:
         pass
 
     try:
         import whisper  # type: ignore
 
+        if progress:
+            progress(0.05)  # openai-whisper doesn't stream; can't show fine-grained %
         model = whisper.load_model(model_size)
         result = model.transcribe(path, language=language)
+        if progress:
+            progress(1.0)
         return [{"start": float(s["start"]), "end": float(s["end"]),
                  "text": str(s["text"]).strip()} for s in result.get("segments", [])]
     except ImportError:

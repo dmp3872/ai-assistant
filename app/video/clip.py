@@ -101,18 +101,22 @@ def cut_clip(src: str | Path, clip: Clip, out_path: str | Path,
 
 
 def cut_all(src: str | Path, clips: list[Clip], out_dir: str | Path,
-            *, reencode: bool = True, ext: str = ".mp4") -> list[dict]:
-    """Cut every clip into out_dir. Returns per-clip results (ok/path/error)."""
+            *, reencode: bool = True, ext: str = ".mp4", progress=None) -> list[dict]:
+    """Cut every clip into out_dir. Returns per-clip results (ok/path/error).
+    `progress`, if given, is called (done_count, total) after each clip for a UI bar."""
     _require("ffmpeg")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     results = []
+    total = len(clips)
     for i, clip in enumerate(clips):
         out_path = out_dir / _safe_name(i, clip, ext)
         res = cut_clip(src, clip, out_path, reencode=reencode)
         res["index"] = i
         res["title"] = clip.title
         results.append(res)
+        if progress:
+            progress(i + 1, total)
     return results
 
 
