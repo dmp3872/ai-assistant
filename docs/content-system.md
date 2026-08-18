@@ -31,7 +31,14 @@ Recurring questions are the highest-leverage content you own: answer once, reuse
 - `engine._replenish_posts()` tops each channel up to its target depth, skipping any
   topic already on the shelf (dedup key = `channel:post:<topic-signature>`).
 
-Both are stored in the `content_pieces` table and move through a simple workflow:
+### 3. Video clips — turn long videos into a posting backlog
+The [auto video clipper](video-clipper.md) can feed this queue directly: run
+`scripts/clip_video.py <video> --queue` and every 5–7 minute clip becomes a `video_clip`
+piece (YouTube by default, or `--queue tiktok`) carrying its auto-title, transcript, file
+path, and timecodes. They appear under **🎬 Video clips** in Studio and fill that channel's
+daily quota — so cutting a video also stocks the shelf. Bridge: `app/video/publish.py`.
+
+All pieces are stored in the `content_pieces` table and move through a simple workflow:
 
 ```
 queued ─▶ approved ─▶ posted      (posted stamps posted_at + saves what you actually posted)

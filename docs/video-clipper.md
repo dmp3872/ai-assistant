@@ -52,7 +52,21 @@ python scripts/clip_video.py talk.mp4 --min 4 --max 8 --target 6
 python scripts/clip_video.py talk.mp4 --model small     # better transcription, slower
 python scripts/clip_video.py talk.mp4 --fast            # stream-copy: near-instant, less precise
 python scripts/clip_video.py talk.mp4 --outdir ~/clips --no-titles
+
+# stock the Studio queue while you clip
+python scripts/clip_video.py talk.mp4 --queue           # each clip -> a YouTube piece
+python scripts/clip_video.py talk.mp4 --queue tiktok    # ...or TikTok
 ```
+
+## Feeding the content queue (`--queue`)
+
+Pass `--queue` and every clip that gets cut is also added to the **Studio** content queue
+as a `video_clip` piece on a channel (default `youtube`, or `--queue tiktok`). Each piece
+carries the clip's auto-title, its transcript (as a caption/description to edit), its
+timecodes, and the local file path. They show up in Studio under **🎬 Video clips** and
+fill that channel's daily quota on the **Plan** tab — so clipping a video also stocks your
+posting shelf. It's idempotent (dedup keyed on source + timecodes), and only clips that
+were actually written get queued. Nothing is uploaded; you still post the files yourself.
 
 Output: an `<video>_clips/` folder (or `--outdir`) with the clip files and `clips.json`
 (start/end, duration, cut reason, title, and the transcript for each clip).

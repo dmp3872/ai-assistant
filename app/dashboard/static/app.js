@@ -111,23 +111,28 @@ async function renderPlan(){
 
 const CHAN={skool:"◎ Skool",tiktok:"♪ TikTok",substack:"✎ Substack",youtube:"▶ YouTube"};
 function pieceCard(p,isAnswer){
+  const isClip=p.kind==="video_clip";
   const conf=p.confidence||"low";
-  const glyph=isAnswer?"💬":"📢";
-  const meta=isAnswer?"answer":(CHAN[p.channel]||p.channel);
+  const glyph=isClip?"🎬":isAnswer?"💬":"📢";
+  const meta=isAnswer?"answer":isClip?((CHAN[p.channel]||p.channel)+" · clip"):(CHAN[p.channel]||p.channel);
   const reason=p.review_reason?`<div style="padding:0 13px 10px;font-size:11px;color:var(--faint)">${esc(p.review_reason)}</div>`:"";
-  const hook=(!isAnswer&&p.hook&&p.body&&!p.body.startsWith(p.hook))?`<div class="content" style="font-weight:600">${esc(p.hook)}</div>`:"";
-  const cta=(!isAnswer&&p.cta)?`<div style="padding:2px 13px 10px;font-size:12px;color:var(--muted)">↳ ${esc(p.cta)}</div>`:"";
+  const hook=(!isAnswer&&!isClip&&p.hook&&p.body&&!p.body.startsWith(p.hook))?`<div class="content" style="font-weight:600">${esc(p.hook)}</div>`:"";
+  const cta=(!isAnswer&&!isClip&&p.cta)?`<div style="padding:2px 13px 10px;font-size:12px;color:var(--muted)">↳ ${esc(p.cta)}</div>`:"";
+  const tags=(p.tags||[]);
+  const clipMeta=isClip?`<div class="freerow" style="padding:0 13px 8px">${tags.map(t=>`<span class="chip">${esc(t)}</span>`).join(" ")}</div>`
+    +(p.origin_ref?`<div style="padding:0 13px 10px;font-size:11px;color:var(--faint);word-break:break-all">📄 ${esc(p.origin_ref)}</div>`:""):"";
+  const label=isClip?"Caption / description — edit, then upload the clip file":isAnswer?"Canonical answer — edit before posting":"Copy-ready post — edit before posting";
   return `<article class="card" data-piece="${p.id}">
     <div class="card-top"><div class="avatar content">${glyph}</div>
       <div class="who"><div class="name">${esc(p.title||"(untitled)")}</div>
         <div class="sub"><span class="chip content">${esc(meta)}</span> · <span class="conf ${conf}">${conf}</span></div></div>
       <span class="pill today">${esc(p.status||"queued")}</span></div>
-    ${hook}
-    <div class="draft"><div class="draft-head"><span class="draft-label">${isAnswer?"Canonical answer — edit before posting":"Copy-ready post — edit before posting"}</span></div>
+    ${hook}${clipMeta}
+    <div class="draft"><div class="draft-head"><span class="draft-label">${label}</span></div>
       <div class="draft-text" contenteditable="true" spellcheck="false">${esc(p.body||"")}</div>${reason}</div>
     ${cta}
     <div class="actions">
-      <button class="act primary" data-copy>⧉ Copy</button>
+      <button class="act primary" data-copy>⧉ Copy${isClip?" caption":""}</button>
       <button class="act" data-cstatus="posted">✓ Posted</button>
       <button class="act ghost" data-cstatus="discarded">✕ Discard</button></div>
   </article>`;
@@ -165,6 +170,15 @@ async function renderStudio(){
       h+=`<div style="margin:6px 0 2px;font-size:12px;color:var(--muted)">${esc(CHAN[c])} · ${list.length}</div>`+list.map(p=>pieceCard(p,false)).join("");});
   }else h+=`<div class="empty">Queue is empty. Hit “Top up all” (needs your API key + imported content), or the 45-min cycle fills it automatically.</div>`;
   h+=`</div>`;
+
+  const clips=d.clips||{};
+  const anyClips=Object.values(clips).some(a=>a&&a.length);
+  if(anyClips){
+    h+=`<div class="planblock"><h3>🎬 Video clips</h3>`;
+    Object.keys(CHAN).forEach(c=>{const list=clips[c]||[];if(!list.length)return;
+      h+=`<div style="margin:6px 0 2px;font-size:12px;color:var(--muted)">${esc(CHAN[c])} · ${list.length}</div>`+list.map(p=>pieceCard(p,false)).join("");});
+    h+=`</div>`;
+  }
 
   const answers=d.answers||[];
   h+=`<div class="planblock"><h3>💬 Answer bank</h3>`;

@@ -265,10 +265,13 @@ def content_studio():
     channel, and the Answer Bank (recurring questions + their canonical answers)."""
     from app.content import queue, opportunities
     channels = ["skool", "tiktok", "substack", "youtube"]
-    posts = {c: [p for p in queue.list_pieces(channel=c, status="open")
-                 if p["kind"] != "answer"] for c in channels}
+    open_by_channel = {c: queue.list_pieces(channel=c, status="open") for c in channels}
+    posts = {c: [p for p in rows if p["kind"] not in ("answer", "video_clip")]
+             for c, rows in open_by_channel.items()}
+    clips = {c: [p for p in rows if p["kind"] == "video_clip"]
+             for c, rows in open_by_channel.items()}
     answers = queue.list_pieces(kind="answer", status="open")
-    return {"stats": queue.stats(), "posts": posts, "answers": answers,
+    return {"stats": queue.stats(), "posts": posts, "clips": clips, "answers": answers,
             "opportunities": opportunities.open_opportunities(limit=100)}
 
 
