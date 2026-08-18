@@ -51,10 +51,6 @@ def main() -> int:
                     help="opt in to AI-generated clip titles (off by default; no AI otherwise)")
     ap.add_argument("--dry-run", action="store_true", help="print the clip plan; cut nothing")
     ap.add_argument("--json", action="store_true", help="emit the plan as JSON to stdout")
-    ap.add_argument("--queue", nargs="?", const=c.get("queue_channel", "youtube"),
-                    default=None, metavar="CHANNEL",
-                    help="add each cut clip to the Studio content queue "
-                         "(optional channel; default youtube, e.g. --queue tiktok)")
     args = ap.parse_args()
 
     src = Path(args.source)
@@ -121,15 +117,6 @@ def main() -> int:
     print(f"  manifest: {manifest}")
     for r in failed:
         print(f"  ✗ clip #{r['index']+1}: {r.get('error','failed')[:160]}")
-
-    # 5) Stock the Studio queue (optional) ----------------------------------------
-    if args.queue:
-        from app.video import publish
-        q = publish.queue_clips(str(src), clips, channel=args.queue, results=results)
-        print(f"• Queued {q['added']} clip(s) to Studio ({q['channel']})"
-              + (f", {q['skipped']} skipped" if q["skipped"] else "")
-              + ". They now fill that channel's daily quota on the Plan tab.")
-
     return 0 if not failed else 1
 
 

@@ -1,7 +1,8 @@
-// Radar service worker — caches the app shell so it opens instantly and works as an
-// installed PWA. API responses are always fetched live (never cached) so the feed is
-// current; only the static shell is cached.
-const SHELL = "radar-shell-v1";
+// Radar service worker — caches the app shell so it works offline / as an installed PWA.
+// API responses are always live. The shell uses NETWORK-FIRST so a freshly pulled build
+// shows up on the next load instead of being pinned to a stale cache (the old cache-first
+// strategy is why new tabs/features could "not appear" until you cleared site data).
+const SHELL = "radar-shell-v2";
 const ASSETS = ["/", "/index.html", "/styles.css", "/app.js", "/icon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", e => {
@@ -17,8 +18,12 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (url.pathname.startsWith("/api/")) return; // live data, don't cache
+  // Network-first: always try the live file, refresh the cache, fall back to cache offline.
   e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).catch(() =>
-      caches.match("/index.html")))
+    fetch(e.request).then(res => {
+      const copy = res.clone();
+      caches.open(SHELL).then(c => c.put(e.request, copy)).catch(() => {});
+      return res;
+    }).catch(() => caches.match(e.request).then(hit => hit || caches.match("/index.html")))
   );
 });

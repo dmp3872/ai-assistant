@@ -22,3 +22,6 @@ playwright-report/
 
 # macOS
 .DS_Store
+
+# standalone clipper output
+clipper_output/

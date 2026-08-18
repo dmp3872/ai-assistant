@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Video Clipper</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --line:#272b34; --fg:#e8eaed; --muted:#9aa0ac;
+    --faint:#6b7280; --accent:#8b5cf6; --accent2:#6d28d9; --ok:#22c55e; --danger:#ef4444;
+  }
+  @media (prefers-color-scheme: light){
+    :root{--bg:#f5f6f8;--card:#fff;--line:#e3e6ea;--fg:#12141a;--muted:#5b616e;--faint:#98a0ad;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:820px;margin:0 auto;padding:28px 18px 80px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  header .logo{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent2));font-size:20px}
+  h1{font-size:22px;margin:0}
+  .sub{color:var(--muted);font-size:13.5px;margin:2px 0 22px}
+  .dropzone{border:2px dashed var(--line);border-radius:16px;background:var(--card);padding:34px 18px;text-align:center;transition:all .18s;cursor:pointer}
+  .dropzone.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--card))}
+  .dz-big{font-size:18px;font-weight:700}
+  .dz-sub{font-size:13px;color:var(--muted);margin-top:6px}
+  .row{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;justify-content:center}
+  input,select,button{font:inherit;color:var(--fg)}
+  input[type=text],select{padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--bg);font-size:13px}
+  .path{flex:1;min-width:220px}
+  button{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:9px;padding:9px 14px;font-size:13px;font-weight:600}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button:disabled{opacity:.5;cursor:default}
+  .opts{display:flex;gap:14px;flex-wrap:wrap;margin:18px 0}
+  .opts label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);font-weight:600}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
+  .pbar{height:9px;border-radius:6px;background:var(--line);overflow:hidden;margin-top:12px}
+  .pbar>span{display:block;height:100%;width:0;background:var(--accent);border-radius:6px;transition:width .4s ease}
+  .clip{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
+  .clip h3{margin:0 0 4px;font-size:15px}
+  .clip .meta{font-size:12px;color:var(--muted);margin-bottom:8px}
+  .clip .meta .why{color:var(--faint)}
+  video{width:100%;max-height:260px;background:#000;border-radius:10px;margin:4px 0 8px}
+  .txt{font-size:12px;color:var(--muted);max-height:56px;overflow:hidden}
+  .acts{margin-top:8px;display:flex;gap:8px}
+  a.btn{text-decoration:none;color:var(--fg);border:1px solid var(--line);background:var(--bg);border-radius:9px;padding:8px 13px;font-size:13px;font-weight:600}
+  .note{border-radius:10px;padding:10px 12px;font-size:12.5px;background:color-mix(in srgb,var(--accent) 12%,var(--card));border:1px solid var(--line)}
+  .err{color:var(--danger)}
+  .foot{color:var(--faint);font-size:11.5px;text-align:center;margin-top:26px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><div class="logo">🎬</div><div><h1>Video Clipper</h1></div></header>
+  <div class="sub">Drop a long video → get natural 5–7 minute clips. It reads the transcript, finds
+    good places to cut (sentence ends, pauses, topic changes), and cuts the files — all on your
+    machine. Nothing is uploaded to the cloud.</div>
+
+  <div id="dropzone" class="dropzone">
+    <div class="dz-big">⤓ Drop a video here</div>
+    <div class="dz-sub">or click to choose a file</div>
+    <input type="file" id="file" accept="video/*,audio/*" style="display:none"/>
+    <div class="row" onclick="event.stopPropagation()">
+      <input type="text" id="path" class="path" placeholder="…or paste a file path (best for very large files)"/>
+      <button id="pathgo">Use path</button>
+    </div>
+  </div>
+
+  <div class="opts">
+    <label>Clip length
+      <select id="len">
+        <option value="standard">Standard · 5–7 min</option>
+        <option value="short">Short · 3–4 min (more clips)</option>
+        <option value="bite">Bite-size · 1–2 min (most clips)</option>
+        <option value="long">Long · 8–10 min</option>
+      </select></label>
+    <label>Quality
+      <select id="model">
+        <option value="base">Fast (base)</option>
+        <option value="small">Better (small)</option>
+        <option value="medium">Best (medium · slow)</option>
+      </select></label>
+    <label>Cutting
+      <select id="fast">
+        <option value="false">Accurate (re-encode)</option>
+        <option value="true">Fast (copy)</option>
+      </select></label>
+  </div>
+
+  <div id="status"></div>
+  <div id="results"></div>
+  <div class="foot">Runs locally · needs ffmpeg + a Whisper backend on this machine</div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const LEN={standard:[5,7,6],short:[3,4.5,3.5],bite:[1,2,1.5],long:[8,10,9]};
+let poll=null;
+
+function opts(){const[mn,mx,tg]=LEN[$("#len").value]||LEN.standard;
+  return{min:mn,max:mx,target:tg,model:$("#model").value,fast:$("#fast").value};}
+
+const dz=$("#dropzone");
+dz.onclick=()=>$("#file").click();
+$("#file").onchange=e=>{if(e.target.files[0])upload(e.target.files[0]);};
+$("#pathgo").onclick=e=>{e.stopPropagation();const p=$("#path").value.trim();if(p)startPath(p);};
+["dragover","dragenter"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove("over");}));
+dz.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f)upload(f);});
+
+function setStatus(text,frac){
+  $("#status").innerHTML=`<div class="panel"><div>${text}</div>`+
+    (frac!=null?`<div class="pbar"><span style="width:${Math.round(frac*100)}%"></span></div>`:"")+`</div>`;
+}
+
+function upload(file){
+  const o=opts(),fd=new FormData();
+  fd.append("file",file);fd.append("min",o.min);fd.append("max",o.max);
+  fd.append("target",o.target);fd.append("model",o.model);fd.append("fast",o.fast);
+  setStatus(`Uploading “${esc(file.name)}” (${(file.size/1e6).toFixed(0)} MB)…`,0.01);
+  $("#results").innerHTML="";
+  const xhr=new XMLHttpRequest();xhr.open("POST","/upload");
+  xhr.upload.onprogress=e=>{if(e.lengthComputable)setStatus(`Uploading “${esc(file.name)}”…`,0.01+0.14*(e.loaded/e.total));};
+  xhr.onload=()=>{try{const r=JSON.parse(xhr.responseText);r.job_id?watch(r.job_id):setStatus("✗ "+(r.error||"failed"));}catch{setStatus("✗ upload failed");}};
+  xhr.onerror=()=>setStatus("✗ upload failed (is the app running?)");
+  xhr.send(fd);
+}
+
+async function startPath(path){
+  setStatus("Starting…",0.02);$("#results").innerHTML="";
+  const r=await fetch("/jobs",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({path,...opts()})}).then(r=>r.json());
+  r.job_id?watch(r.job_id):setStatus("✗ "+(r.error||"could not start"));
+}
+
+function watch(id){
+  clearInterval(poll);
+  const tick=async()=>{
+    const j=await fetch("/jobs/"+id).then(r=>r.json());
+    if(j.error){setStatus("✗ "+j.error);clearInterval(poll);return;}
+    const est=j.est_clips?` · ~${j.est_clips} clips`:"";
+    setStatus(`${esc(j.stage||j.status)}${est}`,j.progress);
+    if(["done","plan_only","error"].includes(j.status)){clearInterval(poll);render(j);}
+  };
+  tick();poll=setInterval(tick,1500);
+}
+
+function render(j){
+  const el=$("#results");
+  if(j.status==="error"){el.innerHTML=`<div class="panel err">✗ ${esc(j.error||"failed")}</div>`;return;}
+  const clips=j.clips||[],planOnly=j.status==="plan_only";
+  let h="";
+  if(planOnly)h+=`<div class="panel note">🛠 ffmpeg isn’t installed, so these are the planned cuts only.
+    Install it (<b>brew install ffmpeg</b>) and run again to get the files.</div>`;
+  h+=`<div class="panel"><b>${clips.length} clips${planOnly?" (planned)":""}</b>
+    ${j.out_dir?`<div style="font-size:12px;color:var(--muted);margin-top:4px">Saved to ${esc(j.out_dir)}</div>`:""}</div>`;
+  h+=clips.map(c=>{
+    const mins=(c.duration/60).toFixed(1);
+    const vid=c.file_url?`<video src="${esc(c.file_url)}" controls preload="none"></video>`:"";
+    const dl=c.file_url?`<a class="btn" href="${esc(c.file_url)}" download>⤓ Download</a>`:"";
+    const err=c.error?`<div class="err" style="font-size:11px">${esc(c.error)}</div>`:"";
+    return `<div class="clip"><h3>${esc(c.title||("Clip "+(c.index+1)))}</h3>
+      <div class="meta">${esc(c.start_hms)} → ${esc(c.end_hms)} · ${mins} min · <span class="why">${esc(c.reason)}</span></div>
+      ${vid}${err}<div class="txt">${esc((c.text||"").slice(0,240))}</div>
+      <div class="acts">${dl}</div></div>`;
+  }).join("");
+  el.innerHTML=h;
+}
+</script>
+</body>
+</html>

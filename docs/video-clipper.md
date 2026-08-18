@@ -4,29 +4,26 @@ Point it at a long video; get natural **5–7 minute clips** back. No timeline s
 manual in/out points. It reads the transcript, finds good places to cut, and hands you
 finished clip files plus a manifest.
 
-Two ways to use it — a drag-and-drop web page, or a one-line CLI. Both run the exact same
-engine, entirely on your machine.
+It's a **standalone app** — nothing else attached. Two ways to run it: a drag-and-drop web
+page, or a one-line CLI. Both run the same engine, entirely on your machine.
 
-## Easiest: the Clipper tab (drag & drop)
-
-Start the dashboard and open it:
+## Easiest: the drag-and-drop app
 
 ```bash
-uvicorn app.main:app --port 4317      # then open http://localhost:4317
+python scripts/clipper.py            # opens http://localhost:4318 in your browser
 ```
 
-Go to the **Clipper** tab and **drop a video onto the page** (or click to choose one, or
-paste a file path for very large files). Pick a clip length and whether to add the clips
-to your content queue, and it runs right there:
+**Drop a video onto the page** (or click to choose one, or paste a file path for very large
+files). Pick a clip length, and it runs right there:
 
 - a live progress bar (transcribing → finding cut points → cutting),
 - then each clip with an inline player, a **Download** button, timecodes, and the reason
-  it was cut,
-- and a **Send all to queue** button (YouTube/TikTok) to stock the Studio shelf.
+  it was cut.
 
-The video is uploaded only to the local app on your own machine (localhost) — nothing goes
-to the cloud. Clip length presets let you dial the count: **Standard 5–7 min**, **Short
-3–4 min**, or **Bite-size 1–2 min** (a 2-hour podcast → 20+ short clips).
+The video only ever goes to this local app on your own machine — nothing to the cloud.
+Clip-length presets dial the count: **Standard 5–7 min**, **Short 3–4 min**, or
+**Bite-size 1–2 min** (a 2-hour podcast → 20+ short clips). Clips are written to
+`./clipper_output/` (override with `CLIPPER_OUT=~/Movies/clips`).
 
 ## Or the CLI
 
@@ -79,21 +76,7 @@ python scripts/clip_video.py talk.mp4 --model small     # better transcription, 
 python scripts/clip_video.py talk.mp4 --fast            # stream-copy: near-instant, less precise
 python scripts/clip_video.py talk.mp4 --outdir ~/clips
 python scripts/clip_video.py talk.mp4 --titles          # opt in to AI titles (off by default)
-
-# stock the Studio queue while you clip
-python scripts/clip_video.py talk.mp4 --queue           # each clip -> a YouTube piece
-python scripts/clip_video.py talk.mp4 --queue tiktok    # ...or TikTok
 ```
-
-## Feeding the content queue (`--queue`)
-
-Pass `--queue` and every clip that gets cut is also added to the **Studio** content queue
-as a `video_clip` piece on a channel (default `youtube`, or `--queue tiktok`). Each piece
-carries the clip's auto-title, its transcript (as a caption/description to edit), its
-timecodes, and the local file path. They show up in Studio under **🎬 Video clips** and
-fill that channel's daily quota on the **Plan** tab — so clipping a video also stocks your
-posting shelf. It's idempotent (dedup keyed on source + timecodes), and only clips that
-were actually written get queued. Nothing is uploaded; you still post the files yourself.
 
 Output: an `<video>_clips/` folder (or `--outdir`) with the clip files and `clips.json`
 (start/end, duration, cut reason, title, and the transcript for each clip).
@@ -131,6 +114,8 @@ to see the plan.
 | `app/video/clip.py` | ffprobe duration, ffmpeg cutting, dry-run plan, manifest |
 | `app/video/titles.py` | Optional Claude auto-titling (graceful) |
 | `scripts/clip_video.py` | The one-command CLI |
-| `app/dashboard/clipper.py` | Background job runner for the Clipper tab (progress) |
-| `app/dashboard/routes.py` | `/api/clipper/*` (upload, jobs, file serving) |
+| `scripts/clipper.py` | Launcher for the standalone web app |
+| `app/video/webapp.py` | Standalone FastAPI app (page + upload/jobs/file endpoints) |
+| `app/video/jobs.py` | Self-contained background job runner (progress) |
+| `app/video/static/index.html` | The standalone drag-and-drop page |
 | `tests/test_video_segment.py`, `tests/test_clipper.py` | Cut-point, parser, job tests |

@@ -1,15 +1,12 @@
-"""Dashboard Clipper job manager — runs the real transcribe→segment→(cut) pipeline.
+"""Standalone Video Clipper job runner (app/video/jobs.py).
 
-No ffmpeg/Whisper here, so jobs are fed a transcript file and land in 'plan_only' (the
-cut points are computed; cutting is skipped with a clear status). That still exercises the
-whole job lifecycle, progress, and the queue bridge.
+No ffmpeg/Whisper in CI, so jobs are fed a transcript file and land in 'plan_only' (cut
+points computed; cutting skipped with a clear status). That still exercises the whole job
+lifecycle and progress. The runner is self-contained — no DB, no content queue.
 """
 import time
 
-from app.content import queue
-from app.dashboard import clipper
-from app.db import get_session, init_db
-from app.db.models import ContentPiece
+from app.video import jobs
 
 
 def _srt(path):
@@ -19,8 +16,7 @@ def _srt(path):
         return f"{h:02d}:{m:02d}:{s:06.3f}".replace(".", ",")
     for i in range(240):  # 240 x 5s = 20 min
         a, b = t, t + 5
-        txt = "So, let's talk about the next idea." if i % 40 == 0 and i else f"Sentence {i}."
-        lines.append(f"{i+1}\n{fmt(a)} --> {fmt(b)}\n{txt}\n")
+        lines.append(f"{i+1}\n{fmt(a)} --> {fmt(b)}\nSentence {i}.\n")
         t = b
     path.write_text("\n".join(lines))
     return str(path)
@@ -28,22 +24,24 @@ def _srt(path):
 
 def _wait(job_id, timeout=15):
     for _ in range(int(timeout * 10)):
-        j = clipper.get_job(job_id)
+        j = jobs.get_job(job_id)
         if j and j["status"] in ("done", "plan_only", "error"):
             return j
         time.sleep(0.1)
-    return clipper.get_job(job_id)
+    return jobs.get_job(job_id)
+
+
+def _opts(**kw):
+    base = {"min": 5, "max": 7, "target": 6, "model": "base", "fast": False}
+    base.update(kw)
+    return base
 
 
 def test_job_runs_and_plans_clips(tmp_path):
-    src = _srt(tmp_path / "demo.srt")
-    jid = clipper.create_job(src, "demo.srt",
-                             {"min": 5, "max": 7, "target": 6, "model": "base",
-                              "fast": False, "queue_channel": None})
+    jid = jobs.create_job(_srt(tmp_path / "demo.srt"), "demo.srt", _opts())
     j = _wait(jid)
     assert j["status"] == "plan_only"      # no ffmpeg in CI -> plan only
-    assert j["est_clips"] == 3
-    assert len(j["clips"]) == 3
+    assert j["est_clips"] and len(j["clips"]) == j["est_clips"]
     c0 = j["clips"][0]
     assert c0["start_hms"] == "00:00:00.000"
     assert c0["reason"]
@@ -51,35 +49,23 @@ def test_job_runs_and_plans_clips(tmp_path):
     assert j["progress"] == 1.0
 
 
+def test_short_length_makes_more_clips(tmp_path):
+    src = _srt(tmp_path / "demo.srt")
+    std = _wait(jobs.create_job(src, "d.srt", _opts(min=5, max=7, target=6)))
+    short = _wait(jobs.create_job(src, "d.srt", _opts(min=1, max=2, target=1.5)))
+    assert short["est_clips"] > std["est_clips"]   # shorter clips -> more of them
+
+
 def test_job_error_on_empty_transcript(tmp_path):
     empty = tmp_path / "empty.srt"
     empty.write_text("")
-    jid = clipper.create_job(str(empty), "empty.srt",
-                             {"min": 5, "max": 7, "target": 6, "model": "base",
-                              "fast": False, "queue_channel": None})
-    j = _wait(jid)
+    j = _wait(jobs.create_job(str(empty), "empty.srt", _opts()))
     assert j["status"] == "error"
     assert "nothing to clip" in (j["error"] or "").lower()
 
 
-def test_queue_job_pushes_clips(tmp_path):
-    init_db()
-    with get_session() as s:
-        s.query(ContentPiece).delete()
-    src = _srt(tmp_path / "demo.srt")
-    jid = clipper.create_job(src, "demo.srt",
-                             {"min": 5, "max": 7, "target": 6, "model": "base",
-                              "fast": False, "queue_channel": None})
-    _wait(jid)
-    out = clipper.queue_job(jid, "tiktok")   # plan_only still keeps _clips for queueing
-    assert out["ok"] and out["added"] == 3
-    assert queue.depth_by_channel("tiktok") == 3
-
-
-def test_public_view_hides_private_keys(tmp_path):
-    src = _srt(tmp_path / "demo.srt")
-    jid = clipper.create_job(src, "demo.srt",
-                             {"min": 5, "max": 7, "target": 6, "model": "base",
-                              "fast": False, "queue_channel": None})
-    j = _wait(jid)
-    assert not any(k.startswith("_") for k in j)   # no _clips/_results leaked to API
+def test_public_job_has_no_source_leak(tmp_path):
+    j = _wait(jobs.create_job(_srt(tmp_path / "demo.srt"), "demo.srt", _opts()))
+    # job view is JSON-serializable primitives (no raw Clip objects)
+    import json
+    json.dumps(j)

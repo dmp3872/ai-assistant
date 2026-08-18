@@ -7,7 +7,7 @@ function fmtDate(iso){if(!iso)return"";const d=new Date(iso);if(isNaN(d))return"
   const abs=d.toLocaleDateString(undefined,{month:"short",day:"numeric"});
   const rel=days<=0?"today":days===1?"1d ago":days+"d ago";
   return `${abs} · ${rel}`;}
-const LABEL={priority:"Feed",community:"Community",sales:"Sales",tiktok:"TikTok",content:"Content",studio:"Studio",clipper:"Clipper",personal:"Personal",email:"Email",handled:"Handled"};
+const LABEL={priority:"Feed",community:"Community",sales:"Sales",tiktok:"TikTok",content:"Content",studio:"Studio",personal:"Personal",email:"Email",handled:"Handled"};
 let tab="priority", sub="all", sortMode="newest";
 
 function avatarClass(cat){
@@ -59,10 +59,9 @@ function salesCard(s){
 async function render(){
   const feed=$("#feed");feed.innerHTML='<div class="empty">Loading…</div>';
   $("#subfilter").classList.toggle("on",tab==="email");
-  $("#sortbar").style.display=(tab==="plan"||tab==="studio"||tab==="clipper")?"none":"";
+  $("#sortbar").style.display=(tab==="plan"||tab==="studio")?"none":"";
   if(tab==="plan")return renderPlan();
   if(tab==="studio")return renderStudio();
-  if(tab==="clipper")return renderClipper();
   const q="&sort="+sortMode;
   if(tab==="sales"){
     const [{items:sitems},{sales}]=await Promise.all([api("/items?tab=sales"+q),api("/sales")]);
@@ -110,161 +109,26 @@ async function renderPlan(){
   feed.innerHTML=h;
 }
 
-// ---- Clipper tab ----------------------------------------------------------------
-const LENGTHS={standard:[5,7,6],short:[3,4.5,3.5],bite:[1,2,1.5],long:[8,10,9]};
-let clipJob=null, clipPoll=null, clipLen="standard", clipQueue="", clipModel="base";
-
-function clipperShell(){
-  return `<div class="rec" id="clip-head"><h4>🎬 Clip a long video into natural 5–7 min clips</h4>
-    <div style="font-size:13px;color:var(--muted)">Drop a video below (it stays on your Mac — nothing is uploaded to the cloud). It transcribes, finds natural cut points, and cuts the clips for you.</div></div>
-  <div id="dropzone" class="dropzone"><div class="dz-inner">
-      <div class="dz-big">⤓ Drop a video here</div>
-      <div class="dz-sub">or <button class="act" id="pick-btn">choose a file</button></div>
-      <input type="file" id="file-input" accept="video/*,audio/*" style="display:none"/>
-      <div class="dz-path"><input id="path-input" placeholder="…or paste a file path (best for very large files)"/>
-        <button class="act" id="path-go">Use path</button></div>
-  </div></div>
-  <div class="cliprow">
-    <label>Clip length
-      <select id="clip-len">
-        <option value="standard">Standard · 5–7 min</option>
-        <option value="short">Short · 3–4 min (more clips)</option>
-        <option value="bite">Bite-size · 1–2 min (most clips)</option>
-        <option value="long">Long · 8–10 min</option>
-      </select></label>
-    <label>Add to queue
-      <select id="clip-queue">
-        <option value="">No — just files</option>
-        <option value="youtube">YouTube</option>
-        <option value="tiktok">TikTok</option>
-      </select></label>
-    <label>Quality
-      <select id="clip-model">
-        <option value="base">Fast (base)</option>
-        <option value="small">Better (small)</option>
-        <option value="medium">Best (medium · slow)</option>
-      </select></label>
-  </div>
-  <div id="clip-status"></div>
-  <div id="clip-results"></div>`;
-}
-
-async function renderClipper(){
-  const feed=$("#feed");
-  feed.innerHTML=clipperShell();
-  const ls=$("#clip-len"); if(ls){ls.value=clipLen;ls.onchange=e=>clipLen=e.target.value;}
-  const qs=$("#clip-queue"); if(qs){qs.value=clipQueue;qs.onchange=e=>clipQueue=e.target.value;}
-  const ms=$("#clip-model"); if(ms){ms.value=clipModel;ms.onchange=e=>clipModel=e.target.value;}
-  $("#pick-btn").onclick=()=>$("#file-input").click();
-  $("#file-input").onchange=e=>{if(e.target.files[0])uploadClip(e.target.files[0]);};
-  $("#path-go").onclick=()=>{const p=$("#path-input").value.trim();if(p)startClipPath(p);};
-  const dz=$("#dropzone");
-  ["dragover","dragenter"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("over");}));
-  ["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove("over");}));
-  dz.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f)uploadClip(f);});
-  if(clipJob)pollClip(clipJob);  // resume showing an in-flight job
-}
-
-function clipOpts(){const[mn,mx,tg]=LENGTHS[clipLen]||LENGTHS.standard;
-  return{min:mn,max:mx,target:tg,queue_channel:clipQueue,model:clipModel};}
-
-async function uploadClip(file){
-  const o=clipOpts();
-  const fd=new FormData();fd.append("file",file);
-  fd.append("min",o.min);fd.append("max",o.max);fd.append("target",o.target);
-  fd.append("model",o.model);fd.append("fast","false");
-  if(o.queue_channel)fd.append("queue_channel",o.queue_channel);
-  setClipStatus(`Uploading “${esc(file.name)}” (${(file.size/1e6).toFixed(0)} MB) to the local app…`,0.01);
-  try{
-    const xhr=new XMLHttpRequest();xhr.open("POST","/api/clipper/upload");
-    xhr.upload.onprogress=e=>{if(e.lengthComputable)setClipStatus(`Uploading “${esc(file.name)}”…`,0.01+0.15*(e.loaded/e.total));};
-    xhr.onload=()=>{try{const r=JSON.parse(xhr.responseText);if(r.job_id){clipJob=r.job_id;pollClip(r.job_id);}else setClipStatus("✗ "+(r.error||"upload failed"));}catch{setClipStatus("✗ upload failed");}};
-    xhr.onerror=()=>setClipStatus("✗ upload failed (is the local app running?)");
-    xhr.send(fd);
-  }catch(e){setClipStatus("✗ "+e);}
-}
-
-async function startClipPath(path){
-  const o=clipOpts();
-  setClipStatus("Starting…",0.02);
-  const r=await api("/clipper/jobs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path,...o})});
-  if(r.job_id){clipJob=r.job_id;pollClip(r.job_id);}else setClipStatus("✗ "+(r.error||"could not start"));
-}
-
-function setClipStatus(text,frac){
-  const el=$("#clip-status");if(!el)return;
-  const bar=(frac!=null)?`<div class="pbar"><span style="width:${Math.round(frac*100)}%"></span></div>`:"";
-  el.innerHTML=`<div class="planblock"><div style="font-size:13px">${text}</div>${bar}</div>`;
-}
-
-function pollClip(id){
-  clearInterval(clipPoll);
-  const tick=async()=>{
-    const j=await api("/clipper/jobs/"+id);
-    if(j.error){setClipStatus("✗ "+j.error);clearInterval(clipPoll);return;}
-    const est=j.est_clips?` · ~${j.est_clips} clips`:"";
-    setClipStatus(`${esc(j.stage||j.status)}${est}`, j.progress);
-    if(["done","plan_only","error"].includes(j.status)){clearInterval(clipPoll);clipJob=null;renderClipResults(j);}
-  };
-  tick();clipPoll=setInterval(tick,1500);
-}
-
-function renderClipResults(j){
-  const el=$("#clip-results");if(!el)return;
-  if(j.status==="error"){el.innerHTML=`<div class="empty">✗ ${esc(j.error||"failed")}</div>`;return;}
-  const clips=j.clips||[];
-  const planOnly=j.status==="plan_only";
-  const note=planOnly?`<div class="flag">🛠 ffmpeg isn’t installed, so these are the planned cuts only. Install it (<b>brew install ffmpeg</b>) and run again to get the files.</div>`:"";
-  const qd=j.queued?`<div style="font-size:12px;color:var(--muted);padding:0 2px 8px">✓ Added ${j.queued.added} to the ${esc(j.queued.channel)} queue</div>`:"";
-  const head=`<div class="planblock"><h3>${clips.length} clips${planOnly?" (planned)":""}</h3>${note}${qd}
-    ${(!planOnly&&clips.length&&!j.queued)?`<div class="actions"><button class="act primary" id="queue-all" data-job="${esc(j.id)}">＋ Send all to queue</button></div>`:""}</div>`;
-  el.innerHTML=head+clips.map(c=>clipResultCard(c)).join("");
-  const qa=$("#queue-all");if(qa)qa.onclick=async()=>{qa.disabled=true;qa.textContent="Queuing…";
-    const ch=clipQueue||"youtube";
-    const r=await api(`/clipper/jobs/${qa.dataset.job}/queue`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({channel:ch})});
-    toast(r.ok?`Added ${r.added} to ${r.channel} queue`:"Could not queue");refreshChrome();
-    if(r.ok)qa.textContent=`✓ Added ${r.added}`;};
-}
-
-function clipResultCard(c){
-  const mins=(c.duration/60).toFixed(1);
-  const player=c.file_url?`<video class="clipvid" src="${esc(c.file_url)}" controls preload="none"></video>`:"";
-  const dl=c.file_url?`<a class="act" href="${esc(c.file_url)}" download>⤓ Download</a>`:"";
-  const err=c.error?`<div style="padding:6px 13px;font-size:11px;color:var(--danger,#e5484d)">${esc(c.error)}</div>`:"";
-  return `<article class="card">
-    <div class="card-top"><div class="avatar content">🎬</div>
-      <div class="who"><div class="name">${esc(c.title||("Clip "+(c.index+1)))}</div>
-        <div class="sub"><span class="chip">${esc(c.start_hms)} → ${esc(c.end_hms)}</span> · ${mins} min · <span style="color:var(--faint)">${esc(c.reason)}</span></div></div></div>
-    ${player}${err}
-    <div class="content" style="color:var(--muted);font-size:12px;max-height:60px;overflow:hidden">${esc((c.text||"").slice(0,240))}</div>
-    <div class="actions">${dl}</div>
-  </article>`;
-}
-
 const CHAN={skool:"◎ Skool",tiktok:"♪ TikTok",substack:"✎ Substack",youtube:"▶ YouTube"};
 function pieceCard(p,isAnswer){
-  const isClip=p.kind==="video_clip";
   const conf=p.confidence||"low";
-  const glyph=isClip?"🎬":isAnswer?"💬":"📢";
-  const meta=isAnswer?"answer":isClip?((CHAN[p.channel]||p.channel)+" · clip"):(CHAN[p.channel]||p.channel);
+  const glyph=isAnswer?"💬":"📢";
+  const meta=isAnswer?"answer":(CHAN[p.channel]||p.channel);
   const reason=p.review_reason?`<div style="padding:0 13px 10px;font-size:11px;color:var(--faint)">${esc(p.review_reason)}</div>`:"";
-  const hook=(!isAnswer&&!isClip&&p.hook&&p.body&&!p.body.startsWith(p.hook))?`<div class="content" style="font-weight:600">${esc(p.hook)}</div>`:"";
-  const cta=(!isAnswer&&!isClip&&p.cta)?`<div style="padding:2px 13px 10px;font-size:12px;color:var(--muted)">↳ ${esc(p.cta)}</div>`:"";
-  const tags=(p.tags||[]);
-  const clipMeta=isClip?`<div class="freerow" style="padding:0 13px 8px">${tags.map(t=>`<span class="chip">${esc(t)}</span>`).join(" ")}</div>`
-    +(p.origin_ref?`<div style="padding:0 13px 10px;font-size:11px;color:var(--faint);word-break:break-all">📄 ${esc(p.origin_ref)}</div>`:""):"";
-  const label=isClip?"Caption / description — edit, then upload the clip file":isAnswer?"Canonical answer — edit before posting":"Copy-ready post — edit before posting";
+  const hook=(!isAnswer&&p.hook&&p.body&&!p.body.startsWith(p.hook))?`<div class="content" style="font-weight:600">${esc(p.hook)}</div>`:"";
+  const cta=(!isAnswer&&p.cta)?`<div style="padding:2px 13px 10px;font-size:12px;color:var(--muted)">↳ ${esc(p.cta)}</div>`:"";
+  const label=isAnswer?"Canonical answer — edit before posting":"Copy-ready post — edit before posting";
   return `<article class="card" data-piece="${p.id}">
     <div class="card-top"><div class="avatar content">${glyph}</div>
       <div class="who"><div class="name">${esc(p.title||"(untitled)")}</div>
         <div class="sub"><span class="chip content">${esc(meta)}</span> · <span class="conf ${conf}">${conf}</span></div></div>
       <span class="pill today">${esc(p.status||"queued")}</span></div>
-    ${hook}${clipMeta}
+    ${hook}
     <div class="draft"><div class="draft-head"><span class="draft-label">${label}</span></div>
       <div class="draft-text" contenteditable="true" spellcheck="false">${esc(p.body||"")}</div>${reason}</div>
     ${cta}
     <div class="actions">
-      <button class="act primary" data-copy>⧉ Copy${isClip?" caption":""}</button>
+      <button class="act primary" data-copy>⧉ Copy</button>
       <button class="act" data-cstatus="posted">✓ Posted</button>
       <button class="act ghost" data-cstatus="discarded">✕ Discard</button></div>
   </article>`;
@@ -302,15 +166,6 @@ async function renderStudio(){
       h+=`<div style="margin:6px 0 2px;font-size:12px;color:var(--muted)">${esc(CHAN[c])} · ${list.length}</div>`+list.map(p=>pieceCard(p,false)).join("");});
   }else h+=`<div class="empty">Queue is empty. Hit “Top up all” (needs your API key + imported content), or the 45-min cycle fills it automatically.</div>`;
   h+=`</div>`;
-
-  const clips=d.clips||{};
-  const anyClips=Object.values(clips).some(a=>a&&a.length);
-  if(anyClips){
-    h+=`<div class="planblock"><h3>🎬 Video clips</h3>`;
-    Object.keys(CHAN).forEach(c=>{const list=clips[c]||[];if(!list.length)return;
-      h+=`<div style="margin:6px 0 2px;font-size:12px;color:var(--muted)">${esc(CHAN[c])} · ${list.length}</div>`+list.map(p=>pieceCard(p,false)).join("");});
-    h+=`</div>`;
-  }
 
   const answers=d.answers||[];
   h+=`<div class="planblock"><h3>💬 Answer bank</h3>`;
