@@ -1,0 +1,13 @@
+{
+  "name": "Radar Assistant",
+  "install": "bash scripts/cloud_setup.sh",
+  "terminals": [
+    {
+      "name": "dashboard",
+      "command": "source .venv/bin/activate && uvicorn app.main:app --host 127.0.0.1 --port 4317"
+    }
+  ],
+  "ports": [
+    { "port": 4317 }
+  ]
+}
